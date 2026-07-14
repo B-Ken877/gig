@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, XCircle, MessageCircle, Send, Clock, DollarSign, AlertCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle2, XCircle, MessageCircle, Send, Clock, DollarSign, AlertCircle, RefreshCw, ArrowLeft, Inbox } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ export default function PaymentTakerDashboard() {
   const [actionLoading, setActionLoading] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mobileShowChat, setMobileShowChat] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   const load = () => {
@@ -30,6 +31,12 @@ export default function PaymentTakerDashboard() {
   };
 
   useEffect(() => { load(); }, [currentUser]);
+
+  // On mobile, when selected changes, show chat
+  useEffect(() => {
+    if (selected) setMobileShowChat(true);
+    else setMobileShowChat(false);
+  }, [selected]);
 
   useEffect(() => {
     if (!selected || !currentUser) { setChatMessages([]); setConvId(null); return; }
@@ -88,6 +95,11 @@ export default function PaymentTakerDashboard() {
     } finally { setActionLoading(''); }
   };
 
+  const handleBackToList = () => {
+    setSelected(null);
+    setMobileShowChat(false);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -111,27 +123,36 @@ export default function PaymentTakerDashboard() {
     );
   }
 
+  // Empty state
+  if (requests.length === 0 && !selected) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+        <Inbox className="h-16 w-16 mb-4 opacity-30" />
+        <p className="text-lg font-medium">All caught up!</p>
+        <p className="text-sm mt-1">No pending payment requests right now.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex gap-6 h-[calc(100vh-7rem)]">
-      {/* Left: requests list */}
-      <div className="w-80 shrink-0 border rounded-xl bg-white overflow-hidden flex flex-col">
-        <div className="p-4 border-b bg-gray-50">
+    <div className="flex flex-col md:flex-row gap-0 md:gap-6 h-[calc(100vh-7rem)]">
+      {/* Left: requests list - hidden on mobile when chat is shown */}
+      <div className={`${mobileShowChat ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 shrink-0 border md:rounded-xl bg-white overflow-hidden md:h-full h-60 md:h-auto`}>
+        <div className="p-4 border-b bg-gray-50 shrink-0">
           <h3 className="font-semibold text-sm">Pending Payments</h3>
           <p className="text-xs text-gray-500">{requests.length} waiting</p>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {requests.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">All caught up!</p>
-          ) : requests.map(r => (
+          {requests.map(r => (
             <button key={r.id} onClick={() => setSelected(r)}
               className={`w-full text-left p-4 border-b hover:bg-gray-50 transition-colors ${selected?.id === r.id ? 'bg-green-50 border-l-4 border-l-green-500' : ''}`}>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{r.user?.name}</span>
-                <Badge variant="secondary" className="text-xs">{r.role}</Badge>
+                <span className="text-sm font-medium truncate">{r.user?.name}</span>
+                <Badge variant="secondary" className="text-xs shrink-0 ml-2">{r.role}</Badge>
               </div>
-              <p className="text-xs text-gray-500 mt-1">{r.user?.email}</p>
+              <p className="text-xs text-gray-500 mt-1 truncate">{r.user?.email}</p>
               <div className="flex items-center gap-2 mt-2">
-                <DollarSign className="h-3 w-3 text-green-600" />
+                <DollarSign className="h-3 w-3 text-green-600 shrink-0" />
                 <span className="text-sm font-semibold text-green-700">{r.amount} {r.currency}</span>
                 <span className="text-xs text-gray-400">({r.feeType})</span>
               </div>
@@ -141,36 +162,44 @@ export default function PaymentTakerDashboard() {
       </div>
 
       {/* Right: chat + actions */}
-      <div className="flex-1 border rounded-xl bg-white flex flex-col overflow-hidden">
+      <div className={`${!mobileShowChat ? 'hidden md:flex' : 'flex'} flex-1 flex-col border md:rounded-xl bg-white overflow-hidden md:h-full h-[calc(100vh-15rem)]`}>
         {!selected ? (
           <div className="flex-1 flex items-center justify-center text-gray-400">
             <div className="text-center"><MessageCircle className="h-10 w-10 mx-auto mb-3 opacity-30" /><p className="text-sm">Select a payment request to chat with the user</p></div>
           </div>
         ) : (
           <>
-            <div className="px-4 py-3 border-b flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">{selected.user?.name}</p>
-                <p className="text-xs text-gray-500">{selected.role} · {selected.amount} {selected.currency} ({selected.feeType})</p>
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="text-green-600 border-green-300 hover:bg-green-50"
-                  onClick={() => handleAction(selected.id, 'approved')} disabled={actionLoading === selected.id}>
-                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Approve
+            {/* Chat header */}
+            <div className="px-3 md:px-4 py-3 border-b flex items-center justify-between shrink-0 gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                {/* Back button on mobile */}
+                <Button variant="ghost" size="icon" className="md:hidden shrink-0 h-8 w-8" onClick={handleBackToList}>
+                  <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50"
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{selected.user?.name}</p>
+                  <p className="text-xs text-gray-500 truncate">{selected.role} · {selected.amount} {selected.currency} ({selected.feeType})</p>
+                </div>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <Button size="sm" variant="outline" className="text-green-600 border-green-300 hover:bg-green-50 text-xs"
+                  onClick={() => handleAction(selected.id, 'approved')} disabled={actionLoading === selected.id}>
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-0.5 sm:mr-1" /><span className="hidden sm:inline">Approve</span>
+                </Button>
+                <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50 text-xs"
                   onClick={() => handleAction(selected.id, 'rejected')} disabled={actionLoading === selected.id}>
-                  <XCircle className="h-3.5 w-3.5 mr-1" />Reject
+                  <XCircle className="h-3.5 w-3.5 mr-0.5 sm:mr-1" /><span className="hidden sm:inline">Reject</span>
                 </Button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3">
               {chatMessages.map(m => {
                 const isMe = m.senderId === currentUser?.id;
                 return (
                   <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${isMe ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-800'}`}>
+                    <div className={`max-w-[80%] sm:max-w-[75%] rounded-2xl px-3.5 py-2.5 text-sm ${isMe ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-800'}`}>
                       {m.content}
                     </div>
                   </div>
@@ -179,10 +208,11 @@ export default function PaymentTakerDashboard() {
               <div ref={messagesEnd} />
             </div>
 
-            <div className="px-4 py-3 border-t flex gap-2">
+            {/* Input */}
+            <div className="px-3 md:px-4 py-3 border-t flex gap-2 shrink-0">
               <Input value={newMsg} onChange={e => setNewMsg(e.target.value)} placeholder="Type a message..."
                 onKeyDown={e => { if (e.key === 'Enter') sendMessage(); }} className="flex-1" />
-              <Button onClick={sendMessage} disabled={!newMsg.trim()} className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90">
+              <Button onClick={sendMessage} disabled={!newMsg.trim()} className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90 shrink-0">
                 <Send className="h-4 w-4" />
               </Button>
             </div>

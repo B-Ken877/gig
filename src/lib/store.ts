@@ -25,7 +25,7 @@ const VALID_PAGES: ReadonlySet<PageType> = new Set<PageType>([
   'home','services','for-clients','careers','about','contact',
   'login','register-agent','register-client','pending-payment',
   'agent-dashboard','agent-profile','agent-documents','agent-availability',
-  'client-dashboard','client-agents','client-needs','client-jobs',
+  'client-dashboard','client-agents','client-needs','client-jobs','client-profile',
   'admin-dashboard','admin-users','admin-job-posts',
   'payment-taker-dashboard','messages',
 ]);
@@ -33,7 +33,7 @@ const VALID_PAGES: ReadonlySet<PageType> = new Set<PageType>([
 // FEATURE: Role-based page access control
 const ROLE_PAGE_MAP: Partial<Record<UserRole, ReadonlySet<PageType>>> = {
   agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','messages','pending-payment']),
-  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','messages','pending-payment']),
+  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-profile','messages','pending-payment']),
   admin: new Set(['admin-dashboard','admin-users','admin-job-posts','messages']),
   payment_taker: new Set(['payment-taker-dashboard','messages']),
 };

@@ -22,6 +22,7 @@ import ClientDashboard from '@/components/portal/ClientDashboard';
 import ClientAgents from '@/components/portal/ClientAgents';
 import ClientNeeds from '@/components/portal/ClientNeeds';
 import ClientJobs from '@/components/portal/ClientJobs';
+import ClientProfile from '@/components/portal/ClientProfile';
 import AdminDashboard from '@/components/portal/AdminDashboard';
 import AdminUsers from '@/components/portal/AdminUsers';
 import AdminJobPosts from '@/components/portal/AdminJobPosts';
@@ -36,7 +37,7 @@ import { ShieldAlert, LogIn } from 'lucide-react';
 
 const PORTAL_PAGES = new Set<PageType>([
   'agent-dashboard','agent-profile','agent-documents','agent-availability',
-  'client-dashboard','client-agents','client-needs','client-jobs',
+  'client-dashboard','client-agents','client-needs','client-jobs','client-profile',
   'admin-dashboard','admin-users','admin-job-posts',
   'payment-taker-dashboard','messages',
 ]);
@@ -166,6 +167,7 @@ export default function Home() {
             {currentPage === 'client-agents' && <ClientAgents />}
             {currentPage === 'client-needs' && <ClientNeeds />}
             {currentPage === 'client-jobs' && <ClientJobs />}
+            {currentPage === 'client-profile' && <ClientProfile />}
             {currentPage === 'admin-dashboard' && <AdminDashboard />}
             {currentPage === 'admin-users' && <AdminUsers />}
             {currentPage === 'admin-job-posts' && <AdminJobPosts />}

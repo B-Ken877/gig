@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useAppStore } from '@/lib/store';
 import { motion } from 'framer-motion';
-import { Building2, Globe, Shield, ArrowLeft, Eye, EyeOff, CheckCircle, Link } from 'lucide-react';
+import { Building2, Globe, ArrowLeft, Eye, EyeOff, CheckCircle, Shield, Link, Check, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,21 @@ const industries = [
   'Healthcare', 'Financial Services', 'E-commerce', 'Travel & Hospitality',
   'Telecommunications', 'Government', 'Education', 'BPO / Call Center', 'Other',
 ];
+
+function getPasswordStrength(pw: string): { label: string; color: string; width: string } {
+  if (!pw) return { label: '', color: '', width: '0%' };
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 1) return { label: 'Weak', color: 'bg-red-500', width: '20%' };
+  if (score <= 2) return { label: 'Fair', color: 'bg-orange-500', width: '40%' };
+  if (score <= 3) return { label: 'Good', color: 'bg-yellow-500', width: '60%' };
+  if (score <= 4) return { label: 'Strong', color: 'bg-emerald-500', width: '80%' };
+  return { label: 'Very Strong', color: 'bg-emerald-600', width: '100%' };
+}
 
 export default function RegisterClientPage() {
   const { register, navigateTo, addToast, login } = useAppStore();
@@ -96,109 +111,155 @@ export default function RegisterClientPage() {
     }
   };
 
+  const pwStrength = getPasswordStrength(form.password);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 flex items-center justify-center p-4">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-lg">
+    <div className="min-h-screen flex items-center justify-center px-4 py-8" style={{ background: 'linear-gradient(135deg, #0B1A2E 0%, #0f2847 50%, #0B1A2E 100%)' }}>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-xl">
+        {/* Header */}
         <div className="text-center mb-6">
           <button onClick={() => navigateTo('login')}
-            className="inline-flex items-center gap-2 text-slate-400 hover:text-white mb-4 transition-colors">
+            className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors text-sm">
             <ArrowLeft className="w-4 h-4" />Back to Login
           </button>
-          <div className="w-16 h-16 bg-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Building2 className="w-8 h-8 text-blue-400" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#16A34A]">
+            <Building2 className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white">Register as Call Center</h1>
-          <p className="text-slate-400 mt-2">Create your call center account to post jobs and find agents</p>
-          <div className="mt-3 inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-full px-4 py-1.5">
-            <Shield className="w-4 h-4 text-amber-400" />
-            <span className="text-amber-300 text-sm font-medium">Monthly Fee: 3,000 HTG ($20 USD)</span>
+          <h1 className="text-2xl font-bold tracking-wide text-white">Register as Call Center</h1>
+          <p className="mt-2 text-sm text-gray-400">Create your company account to post jobs and find agents</p>
+          <div className="mt-3 inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-1.5">
+            <Shield className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-amber-300 text-sm font-medium">Monthly subscription: 3,000 HTG ($20 USD)</span>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 space-y-4">
-          <div>
-            <Label className="text-slate-300">Contact Person Name *</Label>
-            <Input value={form.fullName} onChange={e => updateField('fullName', e.target.value)}
-              placeholder="Marie Joseph" className="bg-white/5 border-white/10 text-white mt-1" />
-            {errors.fullName && <p className="text-red-400 text-xs mt-1">{errors.fullName}</p>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-slate-300">Email *</Label>
-              <Input type="email" value={form.email} onChange={e => updateField('email', e.target.value)}
-                placeholder="marie@company.com" className="bg-white/5 border-white/10 text-white mt-1" />
-              {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
+        {/* Form Card */}
+        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-2xl border-0 overflow-hidden">
+          {/* Section 1: Account Info */}
+          <div className="border-b border-gray-100">
+            <div className="px-6 pt-6 pb-2">
+              <h2 className="text-sm font-semibold text-[#0B1A2E] uppercase tracking-wider">Account Information</h2>
             </div>
-            <div>
-              <Label className="text-slate-300">Phone *</Label>
-              <Input value={form.phone} onChange={e => updateField('phone', e.target.value)}
-                placeholder="+509 0000 0000" className="bg-white/5 border-white/10 text-white mt-1" />
-              {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone}</p>}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-slate-300">Password *</Label>
-              <div className="relative mt-1">
-                <Input type={showPassword ? 'text' : 'password'} value={form.password}
-                  onChange={e => updateField('password', e.target.value)} placeholder="Min 8 characters"
-                  className="bg-white/5 border-white/10 text-white pr-10" />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+            <div className="px-6 pb-6 space-y-4">
+              <div>
+                <Label className="text-gray-700 text-sm font-medium">Contact Person Name <span className="text-red-500">*</span></Label>
+                <Input value={form.fullName} onChange={e => updateField('fullName', e.target.value)}
+                  placeholder="Marie Joseph" className="mt-1.5 h-11" />
+                {errors.fullName && <p className="text-red-500 text-xs mt-1">{errors.fullName}</p>}
               </div>
-              {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password}</p>}
-            </div>
-            <div>
-              <Label className="text-slate-300">Confirm *</Label>
-              <div className="relative mt-1">
-                <Input type={showConfirm ? 'text' : 'password'} value={form.confirmPassword}
-                  onChange={e => updateField('confirmPassword', e.target.value)} placeholder="Repeat password"
-                  className="bg-white/5 border-white/10 text-white pr-10" />
-                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
-                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-700 text-sm font-medium">Email <span className="text-red-500">*</span></Label>
+                  <Input type="email" value={form.email} onChange={e => updateField('email', e.target.value)}
+                    placeholder="marie@company.com" className="mt-1.5 h-11" />
+                  {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+                </div>
+                <div>
+                  <Label className="text-gray-700 text-sm font-medium">Phone <span className="text-red-500">*</span></Label>
+                  <Input value={form.phone} onChange={e => updateField('phone', e.target.value)}
+                    placeholder="+509 0000 0000" className="mt-1.5 h-11" />
+                  {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
+                </div>
               </div>
-              {errors.confirmPassword && <p className="text-red-400 text-xs mt-1">{errors.confirmPassword}</p>}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-700 text-sm font-medium">Password <span className="text-red-500">*</span></Label>
+                  <div className="relative mt-1.5">
+                    <Input type={showPassword ? 'text' : 'password'} value={form.password}
+                      onChange={e => updateField('password', e.target.value)} placeholder="Min 8 characters"
+                      className="h-11 pr-10" />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {form.password && (
+                    <div className="mt-2">
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-300 ${pwStrength.color}`} style={{ width: pwStrength.width }} />
+                      </div>
+                      <p className={`text-xs mt-1 ${pwStrength.color.replace('bg-', 'text-')}`}>{pwStrength.label}</p>
+                    </div>
+                  )}
+                  {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+                </div>
+                <div>
+                  <Label className="text-gray-700 text-sm font-medium">Confirm Password <span className="text-red-500">*</span></Label>
+                  <div className="relative mt-1.5">
+                    <Input type={showConfirm ? 'text' : 'password'} value={form.confirmPassword}
+                      onChange={e => updateField('confirmPassword', e.target.value)} placeholder="Repeat password"
+                      className="h-11 pr-10" />
+                    <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {form.confirmPassword && form.password === form.confirmPassword && (
+                    <p className="text-emerald-600 text-xs mt-1 flex items-center gap-1"><Check className="w-3 h-3" />Passwords match</p>
+                  )}
+                  {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div>
-            <Label className="text-slate-300 flex items-center gap-2"><Building2 className="w-4 h-4" /> Company Name *</Label>
-            <Input value={form.companyName} onChange={e => updateField('companyName', e.target.value)}
-              placeholder="Acme Call Center" className="bg-white/5 border-white/10 text-white mt-1" />
-            {errors.companyName && <p className="text-red-400 text-xs mt-1">{errors.companyName}</p>}
+          {/* Section 2: Company Info */}
+          <div className="px-6 pt-6 pb-6 space-y-4">
+            <div className="pb-2">
+              <h2 className="text-sm font-semibold text-[#0B1A2E] uppercase tracking-wider">Company Details</h2>
+            </div>
+
+            <div>
+              <Label className="text-gray-700 text-sm font-medium flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-gray-400" /> Company Name <span className="text-red-500">*</span>
+              </Label>
+              <Input value={form.companyName} onChange={e => updateField('companyName', e.target.value)}
+                placeholder="Acme Call Center" className="mt-1.5 h-11" />
+              {errors.companyName && <p className="text-red-500 text-xs mt-1">{errors.companyName}</p>}
+            </div>
+
+            <div>
+              <Label className="text-gray-700 text-sm font-medium flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-gray-400" /> Industry <span className="text-red-500">*</span>
+              </Label>
+              <select value={form.industry} onChange={e => updateField('industry', e.target.value)}
+                className="w-full mt-1.5 h-11 rounded-md border border-gray-200 bg-white px-3 text-sm focus:ring-2 focus:ring-[#16A34A] focus:border-[#16A34A] focus:outline-none transition-colors text-gray-900">
+                <option value="">Select industry</option>
+                {industries.map(i => <option key={i} value={i}>{i}</option>)}
+              </select>
+              {errors.industry && <p className="text-red-500 text-xs mt-1">{errors.industry}</p>}
+            </div>
+
+            <div>
+              <Label className="text-gray-700 text-sm font-medium flex items-center gap-1.5">
+                <Link className="w-3.5 h-3.5 text-gray-400" /> Company Website
+              </Label>
+              <Input value={form.companyWebsite} onChange={e => updateField('companyWebsite', e.target.value)}
+                placeholder="https://www.yourcompany.com" className="mt-1.5 h-11" />
+            </div>
           </div>
 
-          <div>
-            <Label className="text-slate-300 flex items-center gap-2"><Globe className="w-4 h-4" /> Industry *</Label>
-            <select value={form.industry} onChange={e => updateField('industry', e.target.value)}
-              className="w-full mt-1 bg-white/5 border border-white/10 text-white rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
-              <option value="" className="bg-slate-800">Select industry</option>
-              {industries.map(i => <option key={i} value={i} className="bg-slate-800">{i}</option>)}
-            </select>
-            {errors.industry && <p className="text-red-400 text-xs mt-1">{errors.industry}</p>}
+          {/* Submit */}
+          <div className="px-6 pb-6">
+            <Button type="submit" disabled={loading}
+              className="w-full bg-[#16A34A] text-white hover:bg-[#15a34a]/90 font-semibold py-3 text-base h-12 rounded-xl transition-colors">
+              {loading ? (
+                <span className="flex items-center gap-2"><Loader2 className="h-5 w-5 animate-spin" />Creating account...</span>
+              ) : (
+                <span className="flex items-center gap-2"><CheckCircle className="w-5 h-5" />Create Call Center Account</span>
+              )}
+            </Button>
           </div>
 
-          <div>
-            <Label className="text-slate-300 flex items-center gap-2"><Link className="w-4 h-4" /> Company Website</Label>
-            <Input value={form.companyWebsite} onChange={e => updateField('companyWebsite', e.target.value)}
-              placeholder="https://www.yourcompany.com" className="bg-white/5 border-white/10 text-white mt-1" />
+          {/* Footer link */}
+          <div className="border-t border-gray-100 px-6 py-4 bg-gray-50 text-center">
+            <p className="text-sm text-gray-500">
+              Already have an account?{' '}
+              <button type="button" onClick={() => navigateTo('login')} className="text-[#16A34A] font-semibold hover:text-[#22c55e] transition-colors">
+                Sign in
+              </button>
+            </p>
           </div>
-
-          <Button type="submit" disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 text-base">
-            {loading ? (
-              <span className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Creating account...
-              </span>
-            ) : (
-              <span className="flex items-center gap-2"><CheckCircle className="w-5 h-5" />Create Call Center Account</span>
-            )}
-          </Button>
         </form>
       </motion.div>
     </div>

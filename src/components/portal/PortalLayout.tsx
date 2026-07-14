@@ -23,6 +23,7 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
   ],
   client: [
     { label: 'Dashboard', page: 'client-dashboard', icon: LayoutDashboard },
+    { label: 'Company Profile', page: 'client-profile', icon: Building2 },
     { label: 'Job Postings', page: 'client-jobs', icon: Globe },
     { label: 'My Needs', page: 'client-needs', icon: Briefcase },
     { label: 'Agent Bank', page: 'client-agents', icon: Users },
@@ -45,7 +46,7 @@ function getPageTitle(page: PageType): string {
     home: 'Home', services: 'Services', 'for-clients': 'For Call Centers', careers: 'Careers',
     about: 'About Us', contact: 'Contact', login: 'Login',
     'agent-dashboard': 'Dashboard', 'agent-profile': 'My Profile', 'agent-documents': 'Documents', 'agent-availability': 'Availability',
-    'client-dashboard': 'Dashboard', 'client-agents': 'Agent Bank', 'client-needs': 'My Staffing Needs', 'client-jobs': 'Job Postings',
+    'client-dashboard': 'Dashboard', 'client-agents': 'Agent Bank', 'client-needs': 'My Staffing Needs', 'client-jobs': 'Job Postings', 'client-profile': 'Company Profile',
     'admin-dashboard': 'Admin Dashboard', 'admin-users': 'Users', 'admin-job-posts': 'Job Postings',
     'payment-taker-dashboard': 'Payment Requests', 'messages': 'Messages', 'pending-payment': 'Complete Payment',
   };
