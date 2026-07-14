@@ -138,7 +138,8 @@ export default function Home() {
             <LogIn className="h-12 w-12 text-[#16A34A] mx-auto mb-4" />
             <h2 className="text-xl font-bold text-gray-900 mb-2">Sign In Required</h2>
             <p className="text-gray-500 text-sm mb-6">You need to sign in to access this area.</p>
-            <Button className="w-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90 font-semibold" onClick={() => navigateTo('login')}>Sign In</Button>
+            <Button className="w-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90 font-semibold mb-3" onClick={() => navigateTo('login')}>Sign In</Button>
+            <button onClick={() => navigateTo('home')} className="text-sm text-gray-400 hover:text-white transition-colors">← Back to Home</button>
           </CardContent></Card>
         </div>
       );
