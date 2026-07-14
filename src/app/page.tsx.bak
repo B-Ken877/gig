@@ -1,0 +1,171 @@
+'use client';
+import { useAppStore } from '@/lib/store';
+import type { PageType } from '@/lib/types';
+import PortalLayout from '@/components/portal/PortalLayout';
+import PublicNavbar from '@/components/public/PublicNavbar';
+import PublicFooter from '@/components/public/PublicFooter';
+import HomePage from '@/components/public/HomePage';
+import ServicesPage from '@/components/public/ServicesPage';
+import ForClientsPage from '@/components/public/ForClientsPage';
+import CareersPage from '@/components/public/CareersPage';
+import AboutPage from '@/components/public/AboutPage';
+import ContactPage from '@/components/public/ContactPage';
+import LoginPage from '@/components/public/LoginPage';
+import RegisterPage from '@/components/public/RegisterPage';
+import RegisterAgentPage from '@/components/public/RegisterAgentPage';
+import RegisterClientPage from '@/components/public/RegisterClientPage';
+import AgentDashboard from '@/components/portal/AgentDashboard';
+import AgentProfile from '@/components/portal/AgentProfile';
+import AgentDocuments from '@/components/portal/AgentDocuments';
+import AgentAvailability from '@/components/portal/AgentAvailability';
+import ClientDashboard from '@/components/portal/ClientDashboard';
+import ClientAgents from '@/components/portal/ClientAgents';
+import ClientNeeds from '@/components/portal/ClientNeeds';
+import ClientJobs from '@/components/portal/ClientJobs';
+import AdminDashboard from '@/components/portal/AdminDashboard';
+import AdminUsers from '@/components/portal/AdminUsers';
+import AdminJobPosts from '@/components/portal/AdminJobPosts';
+import PaymentTakerDashboard from '@/components/portal/PaymentTakerDashboard';
+import PendingPaymentPage from '@/components/portal/PendingPaymentPage';
+import MessagesPage from '@/components/portal/MessagesPage';
+import { Toaster } from '@/components/ui/sonner';
+import { toast } from 'sonner';
+import { useEffect, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { LogIn } from 'lucide-react';
+
+function ToastBridge() {
+  const { toasts, removeToast } = useAppStore();
+  const prevIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const t of toasts) {
+      if (!prevIds.current.has(t.id)) {
+        const v = t.variant || 'default';
+        if (v === 'destructive') toast.error(t.title, { description: t.description });
+        else if (v === 'success') toast.success(t.title, { description: t.description });
+        else toast(t.title, { description: t.description });
+      }
+    }
+    prevIds.current = new Set(toasts.map(t => t.id));
+  }, [toasts]);
+  useEffect(() => {
+    const i = setInterval(() => { const now = Date.now(); for (const t of useAppStore.getState().toasts) { if (now - parseInt(t.id.split('-')[1]) > 6000) removeToast(t.id); } }, 2000);
+    return () => clearInterval(i);
+  }, [removeToast]);
+  return null;
+}
+
+function PublicRouter() {
+  const { currentPage } = useAppStore();
+  const hideNav = currentPage === 'login' || currentPage === 'register' || currentPage === 'register-agent' || currentPage === 'register-client';
+  return (
+    <div className="min-h-screen flex flex-col">
+      {!hideNav && <PublicNavbar />}
+      <main className="flex-1">
+        {currentPage === 'home' && <HomePage />}
+        {currentPage === 'services' && <ServicesPage />}
+        {currentPage === 'for-clients' && <ForClientsPage />}
+        {currentPage === 'careers' && <CareersPage />}
+        {currentPage === 'about' && <AboutPage />}
+        {currentPage === 'contact' && <ContactPage />}
+        {currentPage === 'login' && <LoginPage />}
+        {currentPage === 'register' && <RegisterPage />}
+        {currentPage === 'register-agent' && <RegisterAgentPage />}
+        {currentPage === 'register-client' && <RegisterClientPage />}
+      </main>
+      {!hideNav && <PublicFooter />}
+    </div>
+  );
+}
+
+function PortalRouter() {
+  const { currentPage } = useAppStore();
+  switch (currentPage) {
+    case 'agent-dashboard': return <AgentDashboard />;
+    case 'agent-profile': return <AgentProfile />;
+    case 'agent-documents': return <AgentDocuments />;
+    case 'agent-availability': return <AgentAvailability />;
+    case 'client-dashboard': return <ClientDashboard />;
+    case 'client-agents': return <ClientAgents />;
+    case 'client-needs': return <ClientNeeds />;
+    case 'client-jobs': return <ClientJobs />;
+    case 'admin-dashboard': return <AdminDashboard />;
+    case 'admin-users': return <AdminUsers />;
+    case 'admin-job-posts': return <AdminJobPosts />;
+    case 'payment-taker-dashboard': return <PaymentTakerDashboard />;
+    case 'messages': return <MessagesPage />;
+    default: return <AgentDashboard />;
+  }
+}
+
+const PORTAL_PAGES = new Set<string>([
+  'agent-dashboard','agent-profile','agent-documents','agent-availability',
+  'client-dashboard','client-agents','client-needs','client-jobs',
+  'admin-dashboard','admin-users','admin-job-posts',
+  'payment-taker-dashboard','messages','pending-payment',
+]);
+
+const VALID_PAGES = new Set([...PORTAL_PAGES, 'home','services','for-clients','careers','about','contact','login','register','register-agent','register-client']);
+
+export default function Home() {
+  const { currentPage, isAuthenticated, navigateTo } = useAppStore();
+  const isPortal = PORTAL_PAGES.has(currentPage);
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+    const hash = window.location.hash.replace(/^#/, '');
+    if (hash && VALID_PAGES.has(hash) && hash !== useAppStore.getState().currentPage) {
+      useAppStore.setState({ currentPage: hash as PageType });
+    }
+    const current = useAppStore.getState().currentPage;
+    window.history.replaceState({ page: current }, '', '#' + current);
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const page = event.state?.page as string | undefined;
+      if (!page || !VALID_PAGES.has(page)) return;
+      const state = useAppStore.getState();
+      if (page === state.currentPage) return;
+      const last = state.previousPages[state.previousPages.length - 1];
+      if (last === page) useAppStore.setState({ currentPage: page as PageType, previousPages: state.previousPages.slice(0, -1) });
+      else useAppStore.setState({ currentPage: page as PageType, previousPages: [...state.previousPages, state.currentPage] });
+      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }); }, [currentPage]);
+
+  return (
+    <>
+      <Toaster position="top-right" richColors />
+      <ToastBridge />
+      {isPortal ? (
+        isAuthenticated ? (
+          currentPage === 'pending-payment' ? <PendingPaymentPage /> :
+          <PortalLayout><PortalRouter /></PortalLayout>
+        ) : (
+          <div className="min-h-screen flex items-center justify-center bg-background">
+            <Card className="enterprise-shadow p-8 text-center max-w-sm">
+              <CardContent className="p-0">
+                <div className="w-14 h-14 rounded-xl bg-[#16A34A] flex items-center justify-center mx-auto mb-4">
+                  <LogIn className="h-7 w-7 text-white" />
+                </div>
+                <h2 className="text-lg font-semibold mb-2">Sign In Required</h2>
+                <p className="text-sm text-muted-foreground mb-6">You need to be logged in to access the portal.</p>
+                <Button onClick={() => navigateTo('login')} className="w-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90">Go to Login</Button>
+              </CardContent>
+            </Card>
+          </div>
+        )
+      ) : (
+        <PublicRouter />
+      )}
+    </>
+  );
+}
