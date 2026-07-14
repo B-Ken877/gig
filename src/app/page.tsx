@@ -32,19 +32,13 @@ import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { LogIn } from 'lucide-react';
+import { ShieldAlert, LogIn } from 'lucide-react';
 
 const PORTAL_PAGES = new Set<PageType>([
-  'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability',
-  'client-dashboard', 'client-agents', 'client-needs', 'client-jobs',
-  'admin-dashboard', 'admin-users', 'admin-job-posts',
-  'payment-taker-dashboard',
-  'messages',
-]);
-
-const VALID_PAGES = new Set([...PORTAL_PAGES,
-  'home','services','for-clients','careers','about','contact',
-  'login','register-agent','register-client','pending-payment'
+  'agent-dashboard','agent-profile','agent-documents','agent-availability',
+  'client-dashboard','client-agents','client-needs','client-jobs',
+  'admin-dashboard','admin-users','admin-job-posts',
+  'payment-taker-dashboard','messages',
 ]);
 
 function PublicRouter() {
@@ -69,31 +63,57 @@ function PublicRouter() {
   );
 }
 
+// BUG FIX: ToastBridge now uses a ref to track fired IDs, preventing duplicate toasts
 function ToastBridge() {
   const { toasts, removeToast } = useAppStore();
-  const prevIds = useRef<Set<string>>(new Set());
+  const firedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    toasts.forEach((t: { id: string; variant?: string }) => {
+    toasts.forEach((t) => {
+      if (firedRef.current.has(t.id)) return;
+      firedRef.current.add(t.id);
       if (t.variant === 'success') toast.success(t.description || t.title || 'Success');
       else if (t.variant === 'destructive') toast.error(t.description || t.title || 'Error');
       else toast(t.description || t.title || 'Notification');
-      setTimeout(() => removeToast(t.id), 5000);
     });
-  }, [toasts, removeToast]);
+  }, [toasts]);
 
   useEffect(() => {
     const currentIds = new Set(toasts.map(t => t.id));
-    prevIds.current.forEach(id => { if (!currentIds.has(id)) removeToast(id); });
-    prevIds.current = currentIds;
-  }, [toasts, removeToast]);
+    firedRef.current.forEach(id => { if (!currentIds.has(id)) firedRef.current.delete(id); });
+  }, [toasts]);
 
   return null;
 }
 
+// FEATURE: Unauthorized access page for role-based access control
+function UnauthorizedPage() {
+  const { navigateTo } = useAppStore();
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0B1A2E] to-[#0B1A2E]/80 p-4">
+      <Card className="w-full max-w-md border-red-200"><CardContent className="p-8 text-center">
+        <ShieldAlert className="h-12 w-12 text-red-400 mx-auto mb-4" />
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Access Denied</h2>
+        <p className="text-gray-500 text-sm mb-6">You don't have permission to view this page.</p>
+        <Button className="w-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90 font-semibold" onClick={() => navigateTo('home')}>Back to Home</Button>
+      </CardContent></Card>
+    </div>
+  );
+}
+
 export default function Home() {
-  const { currentPage, isAuthenticated, navigateTo } = useAppStore();
+  const { currentPage, isAuthenticated, navigateTo, isRoleAllowed, syncFromHash } = useAppStore();
   const [portalError, setPortalError] = useState<string | null>(null);
+
+  // FEATURE: Sync from URL hash on first load (so shared URLs work)
+  useEffect(() => { syncFromHash(); }, []);
+
+  // FEATURE: Listen for back/forward browser navigation
+  useEffect(() => {
+    const handler = () => { syncFromHash(); };
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, []);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -112,15 +132,18 @@ export default function Home() {
   if (isPortal) {
     if (!isAuthenticated) {
       page = (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0B1A2E] to-[#0B1A2E]/80 p-4">
           <Card className="w-full max-w-md"><CardContent className="p-8 text-center">
-            <LogIn className="h-12 w-12 text-green-400 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-white mb-2">Sign In Required</h2>
-            <p className="text-slate-400 text-sm mb-6">You need to sign in to access this area.</p>
-            <Button className="w-full bg-green-600 hover:bg-green-500 text-white font-semibold" onClick={() => navigateTo('login')}>Sign In</Button>
+            <LogIn className="h-12 w-12 text-[#16A34A] mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Sign In Required</h2>
+            <p className="text-gray-500 text-sm mb-6">You need to sign in to access this area.</p>
+            <Button className="w-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90 font-semibold" onClick={() => navigateTo('login')}>Sign In</Button>
           </CardContent></Card>
         </div>
       );
+    // FEATURE: Role-based access control - blocks agents from seeing admin pages
+    } else if (!isRoleAllowed(currentPage)) {
+      page = <UnauthorizedPage />;
     } else {
       page = (
         <>
@@ -128,8 +151,9 @@ export default function Home() {
             <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.95)',zIndex:99999,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px',color:'white'}}>
               <div style={{background:'#1e293b',borderRadius:'12px',padding:'24px',maxWidth:'600px',border:'1px solid #ef4444'}}>
                 <h2 style={{color:'#ef4444',marginBottom:'12px'}}>Rendering Error</h2>
-                <pre style={{whiteSpace:'pre-wrap',wordBreak:'break-word',fontSize:'13px',color:'#fca5a5',margin:0}}>{portalError}</pre>
-                <button onClick={() => setPortalError(null)} style={{marginTop:'16px',padding:'8px 16px',background:'#3b82f6',color:'white',border:'none',borderRadius:'6px',cursor:'pointer'}}>Dismiss</button>
+                {/* SECURITY FIX: Sanitize error message to prevent XSS */}
+                <pre style={{whiteSpace:'pre-wrap',wordBreak:'break-word',fontSize:'13px',color:'#fca5a5',margin:0}}>{portalError.replace(/</g, '&lt;')}</pre>
+                <button onClick={() => setPortalError(null)} style={{marginTop:'16px',padding:'8px 16px',background:'#16A34A',color:'white',border:'none',borderRadius:'6px',cursor:'pointer'}}>Dismiss</button>
               </div>
             </div>
           )}
@@ -155,15 +179,7 @@ export default function Home() {
     page = <PendingPaymentPage />;
   } else {
     page = <PublicRouter />;
-    if (!VALID_PAGES.has(currentPage)) {
-      page = <PublicRouter />;
-    }
   }
 
-  return (
-    <>
-      <ToastBridge />
-      {page}
-    </>
-  );
+  return (<><ToastBridge />{page}</>);
 }
