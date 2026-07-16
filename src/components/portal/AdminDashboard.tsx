@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Users, Briefcase, Clock, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -7,25 +7,38 @@ import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/store';
 import type { PaymentRequest } from '@/lib/types';
 
+const POLL_INTERVAL = 15000;
+
 export default function AdminDashboard() {
-  const { currentUser, navigateTo } = useAppStore();
+  const { currentUser, addToast } = useAppStore();
   const [stats, setStats] = useState({ agents: 0, clients: 0, pendingPayments: 0, approvedPayments: 0 });
   const [recentPayments, setRecentPayments] = useState<PaymentRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [firstLoad, setFirstLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(true);
 
-  const loadDashboard = () => {
+  const loadDashboard = useCallback(() => {
     if (!currentUser) return;
-    setLoading(true);
-    setError(null);
     const headers = { 'X-User-Id': currentUser.id, 'X-User-Role': 'admin' };
 
     Promise.all([
-      fetch('/api/users?role=agent', { headers }).then(r => { if (!r.ok) throw new Error('Failed to load agents'); return r.json(); }),
-      fetch('/api/users?role=client', { headers }).then(r => { if (!r.ok) throw new Error('Failed to load clients'); return r.json(); }),
-      fetch('/api/payment-requests', { headers }).then(r => { if (!r.ok) throw new Error('Failed to load payments'); return r.json(); }),
+      fetch('/api/users?role=agent', { headers }).then(r => {
+        if (!r.ok) throw new Error('Failed to load agents');
+        return r.json();
+      }),
+      fetch('/api/users?role=client', { headers }).then(r => {
+        if (!r.ok) throw new Error('Failed to load clients');
+        return r.json();
+      }),
+      fetch('/api/payment-requests', { headers }).then(r => {
+        if (!r.ok) throw new Error('Failed to load payments');
+        return r.json();
+      }),
     ])
       .then(([agentData, clientData, payData]) => {
+        if (!isMountedRef.current) return;
         if (agentData.users) setStats(s => ({ ...s, agents: agentData.users.length }));
         if (clientData.users) setStats(s => ({ ...s, clients: clientData.users.length }));
         if (payData.paymentRequests) {
@@ -37,11 +50,53 @@ export default function AdminDashboard() {
           }));
         }
       })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
+      .catch(err => {
+        if (isMountedRef.current) setError(err.message);
+      })
+      .finally(() => {
+        if (isMountedRef.current) {
+          setLoading(false);
+          setFirstLoad(false);
+        }
+      });
+  }, [currentUser]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    if (!currentUser) return;
+    setLoading(true);
+    setError(null);
+    loadDashboard();
+    pollRef.current = setInterval(loadDashboard, POLL_INTERVAL);
+    return () => {
+      isMountedRef.current = false;
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [currentUser, loadDashboard]);
+
+  const handleApprove = async (p: PaymentRequest) => {
+    const res = await fetch('/api/payment-requests', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
+      body: JSON.stringify({ id: p.id, status: 'approved' }),
+    });
+    if (res.ok) {
+      addToast({ title: (p.user?.name || 'User') + ' approved!', variant: 'success' });
+      loadDashboard();
+    }
   };
 
-  useEffect(() => { loadDashboard(); }, [currentUser]);
+  const handleReject = async (p: PaymentRequest) => {
+    const res = await fetch('/api/payment-requests', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
+      body: JSON.stringify({ id: p.id, status: 'rejected' }),
+    });
+    if (res.ok) {
+      addToast({ title: (p.user?.name || 'User') + ' rejected', variant: 'destructive' });
+      loadDashboard();
+    }
+  };
 
   const statCards = [
     { label: 'Total Agents', value: stats.agents, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -50,7 +105,7 @@ export default function AdminDashboard() {
     { label: 'Approved', value: stats.approvedPayments, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
   ];
 
-  if (loading) {
+  if (loading && firstLoad) {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" />
@@ -111,25 +166,11 @@ export default function AdminDashboard() {
                     {p.status === 'pending' ? (
                       <>
                         <Button size="sm" variant="outline" className="text-green-600 border-green-300 hover:bg-green-50 text-xs h-7"
-                          onClick={async () => {
-                            const res = await fetch('/api/payment-requests', {
-                              method: 'PATCH',
-                              headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
-                              body: JSON.stringify({ id: p.id, status: 'approved' }),
-                            });
-                            if (res.ok) { addToast({ title: p.user?.name + ' approved!', variant: 'success' }); loadData(); }
-                          }}>
+                          onClick={() => handleApprove(p)}>
                           Approve
                         </Button>
                         <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50 text-xs h-7"
-                          onClick={async () => {
-                            const res = await fetch('/api/payment-requests', {
-                              method: 'PATCH',
-                              headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
-                              body: JSON.stringify({ id: p.id, status: 'rejected' }),
-                            });
-                            if (res.ok) { addToast({ title: p.user?.name + ' rejected', variant: 'destructive' }); loadData(); }
-                          }}>
+                          onClick={() => handleReject(p)}>
                           Reject
                         </Button>
                       </>
