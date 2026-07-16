@@ -13,25 +13,22 @@ export default function ClientDashboard() {
 
   useEffect(() => {
     if (!currentUser) return;
-    // Fetch client profile
-    authFetch(`/api/clients/${currentUser.id}`)
+
+    authFetch('/api/clients/' + currentUser.id)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.client) setCompanyName(d.client.companyName || ''); })
       .catch(() => {});
 
-    // Fetch job count
     authFetch('/api/job-posts')
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.jobPosts) setStats(s => ({ ...s, jobs: d.jobPosts.length })); })
       .catch(() => {});
 
-    // Fetch agent count
     authFetch('/api/agents')
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.agents) setStats(s => ({ ...s, agents: d.agents.length })); })
       .catch(() => {});
 
-    // Fetch needs count
     authFetch('/api/call-center-needs')
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (Array.isArray(d)) setStats(s => ({ ...s, needs: d.length })); })
@@ -63,7 +60,7 @@ export default function ClientDashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('client-jobs')}>
+        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('client-jobs' as never)}>
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div>
@@ -77,7 +74,7 @@ export default function ClientDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('client-agents')}>
+        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('client-agents' as never)}>
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div>
@@ -91,7 +88,7 @@ export default function ClientDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('client-needs')}>
+        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('client-needs' as never)}>
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div>
@@ -110,19 +107,24 @@ export default function ClientDashboard() {
       <Card>
         <CardContent className="p-6">
           <h3 className="font-semibold text-gray-900 mb-4">Quick Actions</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Button variant="outline" className="h-auto py-4 flex flex-col gap-2" onClick={() => navigateTo('client-jobs')}>
-              <Briefcase className="h-5 w-5 text-green-600" />
-              <span className="text-sm font-medium">Browse Job Postings</span>
-              <span className="text-xs text-gray-400">View available jobs</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <Button variant="outline" className="h-auto py-4 flex flex-col gap-2" onClick={() => navigateTo('client-applications' as never)}>
+              <Users className="h-5 w-5 text-green-600" />
+              <span className="text-sm font-medium">Applications</span>
+              <span className="text-xs text-gray-400">View agent applications</span>
             </Button>
-            <Button variant="outline" className="h-auto py-4 flex flex-col gap-2" onClick={() => navigateTo('client-agents')}>
-              <Users className="h-5 w-5 text-blue-600" />
+            <Button variant="outline" className="h-auto py-4 flex flex-col gap-2" onClick={() => navigateTo('client-needs' as never)}>
+              <Briefcase className="h-5 w-5 text-blue-600" />
+              <span className="text-sm font-medium">Staffing Needs</span>
+              <span className="text-xs text-gray-400">Manage your needs</span>
+            </Button>
+            <Button variant="outline" className="h-auto py-4 flex flex-col gap-2" onClick={() => navigateTo('client-agents' as never)}>
+              <Users className="h-5 w-5 text-purple-600" />
               <span className="text-sm font-medium">Explore Agent Bank</span>
               <span className="text-xs text-gray-400">Find qualified agents</span>
             </Button>
-            <Button variant="outline" className="h-auto py-4 flex flex-col gap-2" onClick={() => navigateTo('messages')}>
-              <MessageCircle className="h-5 w-5 text-purple-600" />
+            <Button variant="outline" className="h-auto py-4 flex flex-col gap-2" onClick={() => navigateTo('messages' as never)}>
+              <MessageCircle className="h-5 w-5 text-amber-600" />
               <span className="text-sm font-medium">Messages</span>
               <span className="text-xs text-gray-400">Chat with agents</span>
             </Button>
@@ -137,7 +139,7 @@ export default function ClientDashboard() {
             <DollarSign className="h-5 w-5 text-green-600 mt-0.5" />
             <div>
               <h3 className="font-semibold text-green-900">Your Subscription</h3>
-              <p className="text-sm text-green-700 mt-1">Monthly fee: <strong>3,000 HTG ($20 USD)</strong></p>
+              <p className="text-sm text-green-700 mt-1">Monthly fee: <strong>3,000 HTG</strong></p>
               <p className="text-xs text-green-600 mt-1">Your account is active and in good standing.</p>
             </div>
           </div>

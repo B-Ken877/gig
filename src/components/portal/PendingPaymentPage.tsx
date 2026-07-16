@@ -27,67 +27,73 @@ export default function PendingPaymentPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const feeAmount = currentUser?.role === 'client'
-    ? '3,000 HTG ($20 USD) / month'
+    ? '3,000 HTG / month'
     : '2,000 HTG / year';
   const roleLabel = currentUser?.role === 'client' ? 'Call Center' : 'Agent';
 
-  // Find payment taker and create conversation
+  // Find payment taker and create conversation (only once)
+  const initDoneRef = useRef(false);
   useEffect(() => {
     const init = async () => {
+      if (initDoneRef.current) return;
       try {
         // Find a payment taker user
+        let ptId: string | null = null;
         const searchRes = await authFetch('/api/messages/search-users?q=payment');
         if (searchRes.ok) {
           const data = await searchRes.json();
           const users = data.users || data || [];
           const pt = users.find((u: { role?: string }) => u.role === 'payment_taker');
           if (pt) {
+            ptId = pt.id;
             setPaymentTakerId(pt.id);
           }
         }
 
-        // Check for existing conversation with payment taker
+        if (!ptId) { setLoading(false); return; }
+
+        // Check for existing conversation with payment taker (using local ptId, not state)
         const msgRes = await authFetch('/api/messages?userId=' + (currentUser?.id || ''));
         if (msgRes.ok) {
           const data = await msgRes.json();
           const conversations = data.conversations || [];
           if (Array.isArray(conversations)) {
             const ptConv = conversations.find((c: { user1Id: string; user2Id: string }) => {
-              // We will check if the other user is a payment taker by checking both user IDs
-              return c.user1Id === paymentTakerId || c.user2Id === paymentTakerId;
+              return c.user1Id === ptId || c.user2Id === ptId;
             });
             if (ptConv) {
               setConversationId(ptConv.id);
+              initDoneRef.current = true;
               // Load messages for this conversation
               const convRes = await authFetch('/api/messages?conversationId=' + ptConv.id);
               if (convRes.ok) {
                 const convData = await convRes.json();
                 if (convData.messages) setMessages(convData.messages);
               }
+              return;
             }
           }
         }
 
-        // If no conversation exists and we found a payment taker, create one
-        if (!conversationId && paymentTakerId) {
-          const createRes = await authFetch('/api/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              recipientUserId: paymentTakerId,
-              content: 'Hello! I just registered as a ' + roleLabel + ' and need to complete my payment of ' + feeAmount + '. How do I proceed?',
-            }),
-          });
-          if (createRes.ok) {
-            const newConv = await createRes.json();
-            if (newConv.conversationId) {
-              setConversationId(newConv.conversationId);
-            }
-            if (newConv.message) {
-              setMessages([newConv.message]);
-            }
+        // No existing conversation found - create one with greeting (only once)
+        const createRes = await authFetch('/api/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipientUserId: ptId,
+            content: 'Hello! I just registered as a ' + roleLabel + ' and need to complete my payment of ' + feeAmount + '. How do I proceed?',
+          }),
+        });
+        if (createRes.ok) {
+          const newConv = await createRes.json();
+          if (newConv.conversationId) {
+            setConversationId(newConv.conversationId);
+          }
+          if (newConv.message) {
+            setMessages([newConv.message]);
           }
         }
+        initDoneRef.current = true;
       } catch (err) {
         console.error('Init payment chat error:', err);
       } finally {
@@ -95,7 +101,7 @@ export default function PendingPaymentPage() {
       }
     };
     if (currentUser) init();
-  }, [currentUser, paymentTakerId]);
+  }, [currentUser]);
 
   // Poll for new messages
   useEffect(() => {
@@ -177,7 +183,7 @@ export default function PendingPaymentPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 max-w-3xl mx-auto w-full">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 max-w-3xl mx-auto w-full min-h-0">
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <div className="w-6 h-6 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />

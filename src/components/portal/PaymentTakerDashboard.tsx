@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, XCircle, MessageCircle, Send, Clock, DollarSign, AlertCircle, RefreshCw, ArrowLeft, Inbox } from 'lucide-react';
+import { MessageCircle, Send, Clock, DollarSign, AlertCircle, RefreshCw, ArrowLeft, Inbox } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ export default function PaymentTakerDashboard() {
   const [chatMessages, setChatMessages] = useState<Array<{id:string;senderId:string;content:string}>>([]);
   const [convId, setConvId] = useState<string | null>(null);
   const [newMsg, setNewMsg] = useState('');
-  const [actionLoading, setActionLoading] = useState('');
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mobileShowChat, setMobileShowChat] = useState(false);
@@ -38,22 +38,36 @@ export default function PaymentTakerDashboard() {
     else setMobileShowChat(false);
   }, [selected]);
 
+  const selectedConvRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!selected || !currentUser) { setChatMessages([]); setConvId(null); return; }
+    if (!selected || !currentUser) { setChatMessages([]); setConvId(null); selectedConvRef.current = null; return; }
+    selectedConvRef.current = null;
     fetch('/api/messages?userId=' + currentUser.id, { headers: { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role } })
       .then(r => r.json()).then(d => {
         if (d.conversations) {
           const existing = d.conversations.find((c: {user1Id:string;user2Id:string}) => c.user1Id === selected.userId || c.user2Id === selected.userId);
-          if (existing) { setConvId(existing.id); loadMessages(existing.id); }
+          if (existing) {
+            selectedConvRef.current = existing.id;
+            setConvId(existing.id);
+            loadMessages(existing.id);
+            return;
+          }
         }
-        if (!convId) {
+        // No existing conversation - create one (only once per selection)
+        if (!selectedConvRef.current) {
           fetch('/api/messages', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
             body: JSON.stringify({ recipientUserId: selected.userId, content: `Hi ${selected.user?.name}, I'm here to help you with your onboarding payment.` }),
-          }).then(r => r.json()).then(d => { if (d.conversationId) { setConvId(d.conversationId); loadMessages(d.conversationId); } });
+          }).then(r => r.json()).then(d => {
+            if (d.conversationId) {
+              selectedConvRef.current = d.conversationId;
+              setConvId(d.conversationId);
+              loadMessages(d.conversationId);
+            }
+          });
         }
       });
-  }, [selected]);
+  }, [selected?.id]);
 
   function loadMessages(cid: string) {
     fetch(`/api/messages?conversationId=${cid}`, { headers: { 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role } })
@@ -80,20 +94,7 @@ export default function PaymentTakerDashboard() {
     });
   };
 
-  const handleAction = async (id: string, status: 'approved' | 'rejected') => {
-    setActionLoading(id);
-    try {
-      const res = await fetch('/api/payment-requests', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
-        body: JSON.stringify({ id, status }),
-      });
-      if (res.ok) {
-        addToast({ title: status === 'approved' ? 'Account approved!' : 'Payment rejected', variant: status === 'approved' ? 'success' : 'destructive' });
-        load();
-        setSelected(null);
-      }
-    } finally { setActionLoading(''); }
-  };
+
 
   const handleBackToList = () => {
     setSelected(null);
@@ -162,7 +163,7 @@ export default function PaymentTakerDashboard() {
       </div>
 
       {/* Right: chat + actions */}
-      <div className={`${!mobileShowChat ? 'hidden md:flex' : 'flex'} flex-1 flex-col border md:rounded-xl bg-white overflow-hidden md:h-full h-[calc(100vh-15rem)]`}>
+      <div className={`${!mobileShowChat ? 'hidden md:flex' : 'flex'} flex-1 flex-col border md:rounded-xl bg-white overflow-hidden md:h-full h-[calc(100vh-15rem)] min-h-0`}>
         {!selected ? (
           <div className="flex-1 flex items-center justify-center text-gray-400">
             <div className="text-center"><MessageCircle className="h-10 w-10 mx-auto mb-3 opacity-30" /><p className="text-sm">Select a payment request to chat with the user</p></div>
@@ -181,20 +182,11 @@ export default function PaymentTakerDashboard() {
                   <p className="text-xs text-gray-500 truncate">{selected.role} · {selected.amount} {selected.currency} ({selected.feeType})</p>
                 </div>
               </div>
-              <div className="flex gap-1.5 shrink-0">
-                <Button size="sm" variant="outline" className="text-green-600 border-green-300 hover:bg-green-50 text-xs"
-                  onClick={() => handleAction(selected.id, 'approved')} disabled={actionLoading === selected.id}>
-                  <CheckCircle2 className="h-3.5 w-3.5 mr-0.5 sm:mr-1" /><span className="hidden sm:inline">Approve</span>
-                </Button>
-                <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50 text-xs"
-                  onClick={() => handleAction(selected.id, 'rejected')} disabled={actionLoading === selected.id}>
-                  <XCircle className="h-3.5 w-3.5 mr-0.5 sm:mr-1" /><span className="hidden sm:inline">Reject</span>
-                </Button>
-              </div>
+              <Badge variant="secondary" className="text-xs shrink-0">{selected.amount} {selected.currency} · {selected.feeType}</Badge>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3">
+            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 min-h-0">
               {chatMessages.map(m => {
                 const isMe = m.senderId === currentUser?.id;
                 return (

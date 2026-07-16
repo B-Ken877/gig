@@ -139,7 +139,7 @@ export default function PublicFooter() {
               <li className="flex items-start gap-3">
                 <MapPin className="mt-0.5 size-4 shrink-0 text-[#16A34A]" />
                 <span className="text-sm text-white/60">
-                  123 Business Avenue,
+                  Petion-ville,
                   <br />
                   Port-au-Prince, Haiti
                 </span>
@@ -147,19 +147,26 @@ export default function PublicFooter() {
               <li className="flex items-center gap-3">
                 <Phone className="size-4 shrink-0 text-[#16A34A]" />
                 <a
-                  href="tel:+50912345678"
+                  href="tel:+50944256486"
                   className="transition-enterprise text-sm text-white/60 hover:text-[#16A34A]"
                 >
-                  +509 1234 5678
+                  +509 4425 6486
+                </a>
+                <span className="text-white/30">/</span>
+                <a
+                  href="tel:+50947579322"
+                  className="transition-enterprise text-sm text-white/60 hover:text-[#16A34A]"
+                >
+                  +509 4757 9322
                 </a>
               </li>
               <li className="flex items-center gap-3">
                 <Mail className="size-4 shrink-0 text-[#16A34A]" />
                 <a
-                  href="mailto:info@gigsolutions.com"
+                  href="mailto:contact.gigsolutions@gmail.com"
                   className="transition-enterprise text-sm text-white/60 hover:text-[#16A34A]"
                 >
-                  info@gigsolutions.com
+                  contact.gigsolutions@gmail.com
                 </a>
               </li>
             </ul>

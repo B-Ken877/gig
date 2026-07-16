@@ -1,16 +1,30 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { User, FileText, Calendar, MessageCircle, ArrowRight, AlertCircle, RefreshCw } from 'lucide-react';
+import { User, FileText, Calendar, MessageCircle, ArrowRight, AlertCircle, RefreshCw, Briefcase, MapPin, Clock, Building2, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
 
+interface ClientNeed {
+  id: string;
+  title: string;
+  description: string;
+  requirements: string[];
+  createdAt: string;
+  client: { companyName: string; industry: string | null };
+}
+
 export default function AgentDashboard() {
-  const { currentUser, navigateTo } = useAppStore();
+  const { currentUser, navigateTo, addToast } = useAppStore();
   const [agent, setAgent] = useState<any>(null);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
+  const [needs, setNeeds] = useState<ClientNeed[]>([]);
+  const [needsLoading, setNeedsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+  const [applyingNeed, setApplyingNeed] = useState<string | null>(null);
 
   const loadData = () => {
     if (!currentUser) return;
@@ -28,8 +42,16 @@ export default function AgentDashboard() {
         if (!r.ok) throw new Error('Failed to load messages');
         return r.json();
       }),
+      fetch('/api/call-center-needs', { headers }).then(r => {
+        if (!r.ok) throw new Error('Failed to load needs');
+        return r.json();
+      }),
+      fetch('/api/call-center-needs/interest', { headers }).then(r => {
+        if (!r.ok) return { appliedNeedIds: [] };
+        return r.json();
+      }),
     ])
-      .then(([agentData, msgData]) => {
+      .then(([agentData, msgData, needsData, interestData]) => {
         if (agentData.agents) {
           const me = agentData.agents.find((a: any) => a.userId === currentUser.id);
           if (me) setAgent(me);
@@ -37,18 +59,43 @@ export default function AgentDashboard() {
         if (msgData.conversations) {
           setUnreadMsgs(msgData.conversations.reduce((sum: number, c: any) => sum + (c.unreadCount || 0), 0));
         }
+        if (needsData.needs) setNeeds(needsData.needs);
+        if (interestData?.appliedNeedIds) setAppliedIds(new Set(interestData.appliedNeedIds));
       })
       .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setNeedsLoading(false); });
   };
 
   useEffect(() => { loadData(); }, [currentUser]);
+
+  const handleApply = (need: ClientNeed) => {
+    if (applyingNeed || appliedIds.has(need.id)) return;
+    setApplyingNeed(need.id);
+    fetch('/api/call-center-needs/interest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
+      body: JSON.stringify({ needId: need.id }),
+    })
+      .then(r => {
+        if (r.ok) {
+          setAppliedIds(prev => new Set([...prev, need.id]));
+          addToast({ title: 'Application Sent!', description: 'You have successfully applied for "' + need.title + '". ' + (need.client?.companyName || 'The call center') + ' has been notified and will respond in your Messages.', variant: 'success' });
+        } else if (r.status === 409) {
+          setAppliedIds(prev => new Set([...prev, need.id]));
+          addToast({ title: 'Already Applied', description: 'You have already applied for this need.', variant: 'default' });
+        } else {
+          return r.json().then(d => { throw new Error(d.error || 'Failed'); });
+        }
+      })
+      .catch(err => addToast({ title: 'Error', description: err.message, variant: 'destructive' }))
+      .finally(() => setApplyingNeed(null));
+  };
 
   const quickActions = [
     { label: 'Edit Profile', desc: 'Update your personal info and skills', page: 'agent-profile' as const, icon: User, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'Documents', desc: 'Upload your resume, ID, certificates', page: 'agent-documents' as const, icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' },
     { label: 'Availability', desc: 'Set your available dates and shifts', page: 'agent-availability' as const, icon: Calendar, color: 'text-green-600', bg: 'bg-green-50' },
-    { label: 'Messages', desc: `${unreadMsgs} unread message${unreadMsgs !== 1 ? 's' : ''}`, page: 'messages' as const, icon: MessageCircle, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'Messages', desc: unreadMsgs + ' unread message' + (unreadMsgs !== 1 ? 's' : ''), page: 'messages' as const, icon: MessageCircle, color: 'text-amber-600', bg: 'bg-amber-50' },
   ];
 
   if (loading) {
@@ -98,8 +145,8 @@ export default function AgentDashboard() {
           return (
             <Card key={a.page} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo(a.page)}>
               <CardContent className="p-5">
-                <div className={`h-10 w-10 rounded-lg ${a.bg} flex items-center justify-center mb-3`}>
-                  <Icon className={`h-5 w-5 ${a.color}`} />
+                <div className={"h-10 w-10 rounded-lg " + a.bg + " flex items-center justify-center mb-3"}>
+                  <Icon className={"h-5 w-5 " + a.color} />
                 </div>
                 <h3 className="text-sm font-semibold">{a.label}</h3>
                 <p className="text-xs text-gray-500 mt-1">{a.desc}</p>
@@ -108,6 +155,92 @@ export default function AgentDashboard() {
           );
         })}
       </div>
+
+      {/* Client Staffing Needs */}
+      <Card>
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Briefcase className="h-5 w-5 text-green-600" />
+              <h3 className="text-sm font-semibold">Client Staffing Needs</h3>
+              <Badge variant="secondary" className="text-xs">{needs.length} open</Badge>
+            </div>
+          </div>
+          {needsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin h-6 w-6 border-2 border-green-500 border-t-transparent rounded-full" />
+            </div>
+          ) : needs.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <Briefcase className="h-10 w-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No staffing needs posted yet. Check back soon!</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {needs.map(need => {
+                const isApplied = appliedIds.has(need.id);
+                const isApplying = applyingNeed === need.id;
+                return (
+                  <div key={need.id} className="border rounded-xl p-4 hover:shadow-sm transition-shadow">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-semibold text-gray-900">{need.title}</h4>
+                          {isApplied && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-medium">
+                              <CheckCircle2 className="h-3 w-3" />Applied
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1.5">
+                          <span className="flex items-center gap-1 text-xs text-gray-500">
+                            <Building2 className="h-3 w-3" />{need.client?.companyName || 'Call Center'}
+                          </span>
+                          {need.client?.industry && (
+                            <span className="flex items-center gap-1 text-xs text-gray-400">
+                              <MapPin className="h-3 w-3" />{need.client.industry}
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                            <Clock className="h-3 w-3" />{new Date(need.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        {need.description && (
+                          <p className="text-xs text-gray-600 mt-2 line-clamp-2">{need.description}</p>
+                        )}
+                        {need.requirements && need.requirements.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {need.requirements.slice(0, 5).map((req, i) => (
+                              <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">{req}</Badge>
+                            ))}
+                            {need.requirements.length > 5 && (
+                              <span className="text-[10px] text-gray-400 self-center">+{need.requirements.length - 5} more</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        className={
+                          isApplied
+                            ? 'bg-gray-100 text-gray-400 hover:bg-gray-100 text-xs shrink-0 h-8 cursor-default'
+                            : 'bg-[#16A34A] text-white hover:bg-[#16A34A]/90 text-xs shrink-0 h-8'
+                        }
+                        onClick={() => !isApplied && handleApply(need)}
+                        disabled={isApplied || isApplying}
+                      >
+                        {isApplying ? 'Sending...' : isApplied ? 'Applied' : "I'm Interested"}
+                        {!isApplied && !isApplying && <ArrowRight className="h-3 w-3 ml-1" />}
+                        {isApplied && <CheckCircle2 className="h-3 w-3 ml-1" />}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Profile summary */}
       {agent && (

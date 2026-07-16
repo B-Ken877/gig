@@ -103,13 +103,42 @@ export default function AdminDashboard() {
             <div className="space-y-3">
               {recentPayments.map(p => (
                 <div key={p.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{p.user?.name || 'Unknown'}</p>
                     <p className="text-xs text-gray-500">{p.user?.email} · {p.role} · {p.amount} {p.currency}</p>
                   </div>
-                  <Badge variant={p.status === 'approved' ? 'default' : p.status === 'rejected' ? 'destructive' : 'secondary'}>
-                    {p.status}
-                  </Badge>
+                  <div className="flex items-center gap-2 shrink-0 ml-3">
+                    {p.status === 'pending' ? (
+                      <>
+                        <Button size="sm" variant="outline" className="text-green-600 border-green-300 hover:bg-green-50 text-xs h-7"
+                          onClick={async () => {
+                            const res = await fetch('/api/payment-requests', {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
+                              body: JSON.stringify({ id: p.id, status: 'approved' }),
+                            });
+                            if (res.ok) { addToast({ title: p.user?.name + ' approved!', variant: 'success' }); loadData(); }
+                          }}>
+                          Approve
+                        </Button>
+                        <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50 text-xs h-7"
+                          onClick={async () => {
+                            const res = await fetch('/api/payment-requests', {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
+                              body: JSON.stringify({ id: p.id, status: 'rejected' }),
+                            });
+                            if (res.ok) { addToast({ title: p.user?.name + ' rejected', variant: 'destructive' }); loadData(); }
+                          }}>
+                          Reject
+                        </Button>
+                      </>
+                    ) : (
+                      <Badge variant={p.status === 'approved' ? 'default' : 'destructive'}>
+                        {p.status}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

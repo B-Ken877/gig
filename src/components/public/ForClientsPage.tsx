@@ -25,7 +25,6 @@ const PRICING = [
     title: 'Call Center Plan',
     price: '3,000 HTG',
     period: '/month',
-    usd: '(approx. $20 USD)',
     features: [
       'Access to the full agent bank',
       'Unlimited direct messaging with agents',

@@ -24,16 +24,16 @@ const PUBLIC_PAGES: ReadonlySet<PageType> = new Set<PageType>([
 const VALID_PAGES: ReadonlySet<PageType> = new Set<PageType>([
   'home','services','for-clients','careers','about','contact',
   'login','register-agent','register-client','pending-payment',
-  'agent-dashboard','agent-profile','agent-documents','agent-availability',
-  'client-dashboard','client-agents','client-needs','client-jobs','client-profile',
+  'agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications',
+  'client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile',
   'admin-dashboard','admin-users','admin-job-posts',
   'payment-taker-dashboard','messages',
 ]);
 
 // FEATURE: Role-based page access control
 const ROLE_PAGE_MAP: Partial<Record<UserRole, ReadonlySet<PageType>>> = {
-  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','messages','pending-payment']),
-  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-profile','messages','pending-payment']),
+  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications','messages','pending-payment']),
+  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile','messages','pending-payment']),
   admin: new Set(['admin-dashboard','admin-users','admin-job-posts','messages']),
   payment_taker: new Set(['payment-taker-dashboard','messages']),
 };
@@ -61,7 +61,7 @@ const createAuthSlice = (
     set(() => ({ isLoading: true }));
     try {
       const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
-      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.message || 'Login failed'); }
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || err.message || 'Login failed'); }
       const data = await res.json();
       set(() => ({ currentUser: data.user, isAuthenticated: true, isLoading: false }));
     } catch (error) { set(() => ({ isLoading: false })); throw error; }
@@ -82,6 +82,7 @@ const createAuthSlice = (
 interface NavSlice {
   currentPage: PageType;
   previousPages: PageType[];
+  pendingChatUserId: string | null;
   navigateTo: (page: PageType) => void;
   goBack: () => void;
   isPublicPage: () => boolean;
@@ -95,6 +96,7 @@ const createNavSlice = (
 ): NavSlice => ({
   currentPage: 'home',
   previousPages: [],
+  pendingChatUserId: null,
   navigateTo: (page: PageType) => {
     const { currentPage } = get();
     if (page === currentPage) return;

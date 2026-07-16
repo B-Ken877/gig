@@ -139,7 +139,7 @@ export default function RegisterClientPage() {
           <p className="mt-2 text-sm text-gray-400">Create your company account to post jobs and find agents</p>
           <div className="mt-3 inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-1.5">
             <Shield className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-amber-300 text-sm font-medium">Monthly subscription: 3,000 HTG ($20 USD)</span>
+            <span className="text-amber-300 text-sm font-medium">Monthly subscription: 3,000 HTG</span>
           </div>
         </div>
 

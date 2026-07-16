@@ -1,52 +1,18 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Target, Heart, Lightbulb, Shield, Users, Globe, ArrowRight } from 'lucide-react';
+import { Target, Heart, Lightbulb, Shield, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/store';
 
 const fadeUp = { hidden: { opacity: 0, y: 30 }, visible: { opacity: 1, y: 0 } };
 const stagger = { visible: { transition: { staggerChildren: 0.12 } } };
 
-const LEADERS = [
-  {
-    name: 'Marc-Andre Duvall',
-    title: 'Founder & CEO',
-    image: '/images/leader-ceo.png',
-    bio: 'A Haitian-American entrepreneur with 15+ years in BPO operations. Marc-Andre founded Gig Solutions to give Caribbean talent direct access to global call center opportunities — without the traditional gatekeepers.',
-  },
-  {
-    name: 'Alicia Chen',
-    title: 'Chief Operations Officer',
-    image: '/images/leader-coo.png',
-    bio: 'Former VP of Operations at a leading Jamaican BPO. Alicia oversees platform operations, agent relations, and ensures every user has a seamless experience.',
-  },
-  {
-    name: 'David Okafor',
-    title: 'Head of Growth',
-    image: '/images/leader-recruiter.png',
-    bio: 'With a decade of experience across West Africa and the Caribbean, David leads our growth efforts — bringing new call centers and agents onto the platform.',
-  },
-  {
-    name: 'Sofia Ramirez',
-    title: 'Head of Client Success',
-    image: '/images/leader-clientsuccess.png',
-    bio: 'Sofia ensures every call center on the platform finds the talent they need. She manages partner relationships from onboarding through ongoing support.',
-  },
-];
-
 const VALUES = [
   { icon: Target, title: 'Simplicity', description: 'No complicated processes. Register, pay, build your profile, and connect. We keep it straightforward.' },
   { icon: Heart, title: 'People First', description: 'Every agent on this platform is a real person with real skills. We treat them with the respect they deserve.' },
   { icon: Lightbulb, title: 'Direct Connection', description: 'We believe the best hiring happens when call centers and agents talk directly. No intermediaries, no delays.' },
   { icon: Shield, title: 'Transparency', description: 'Flat pricing, clear terms, and honest communication. What you see is what you get.' },
-];
-
-const MILESTONES = [
-  { year: '2023', event: 'Gig Solutions founded in Port-au-Prince, Haiti' },
-  { year: '2024', event: 'Expanded to Jamaica, Trinidad, and the Dominican Republic' },
-  { year: '2024', event: 'Launched the agent marketplace and call center portal' },
-  { year: '2025', event: '200+ agents and 30+ call center partners across 5 countries' },
 ];
 
 export default function AboutPage() {
@@ -127,59 +93,6 @@ export default function AboutPage() {
                 </motion.div>
               );
             })}
-          </div>
-        </div>
-      </section>
-
-      {/* Team */}
-      <section className="py-20 sm:py-28">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="text-center mb-16">
-            <motion.span variants={fadeUp} className="mb-3 inline-block text-xs font-semibold tracking-wider uppercase text-[#16A34A]">Our Team</motion.span>
-            <motion.h2 variants={fadeUp} className="text-3xl font-bold tracking-tight sm:text-4xl">
-              The People Behind <span className="text-[#16A34A]">Gig Solutions</span>
-            </motion.h2>
-          </motion.div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {LEADERS.map(l => (
-              <motion.div key={l.name} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
-                className="rounded-xl border bg-white overflow-hidden hover:shadow-lg transition-shadow group">
-                <div className="h-56 overflow-hidden">
-                  <img src={l.image} alt={l.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                </div>
-                <div className="p-5">
-                  <h3 className="text-base font-semibold">{l.name}</h3>
-                  <p className="text-xs text-[#16A34A] font-medium">{l.title}</p>
-                  <p className="mt-2 text-xs text-gray-500 leading-relaxed">{l.bio}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Timeline */}
-      <section className="bg-gray-50 py-20 sm:py-28">
-        <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="text-center mb-16">
-            <motion.span variants={fadeUp} className="mb-3 inline-block text-xs font-semibold tracking-wider uppercase text-[#16A34A]">Our Journey</motion.span>
-            <motion.h2 variants={fadeUp} className="text-3xl font-bold tracking-tight sm:text-4xl">
-              Key <span className="text-[#16A34A]">Milestones</span>
-            </motion.h2>
-          </motion.div>
-          <div className="space-y-6">
-            {MILESTONES.map(m => (
-              <motion.div key={m.year} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}
-                className="flex items-start gap-6">
-                <div className="shrink-0 w-20 text-right">
-                  <span className="text-lg font-bold text-[#16A34A]">{m.year}</span>
-                </div>
-                <div className="shrink-0 w-px bg-[#16A34A]/20 self-stretch relative">
-                  <div className="absolute -left-1.5 top-1 h-3 w-3 rounded-full bg-[#16A34A]" />
-                </div>
-                <p className="text-sm text-gray-700 pb-4">{m.event}</p>
-              </motion.div>
-            ))}
           </div>
         </div>
       </section>

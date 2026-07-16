@@ -3,8 +3,8 @@
 export type PageType =
   | 'home' | 'services' | 'for-clients' | 'careers' | 'about' | 'contact'
   | 'login' | 'register' | 'register-agent' | 'register-client'
-  | 'agent-dashboard' | 'agent-profile' | 'agent-documents' | 'agent-availability'
-  | 'client-dashboard' | 'client-agents' | 'client-needs' | 'client-jobs' | 'client-profile'
+  | 'agent-dashboard' | 'agent-profile' | 'agent-documents' | 'agent-availability' | 'agent-applications'
+  | 'client-dashboard' | 'client-agents' | 'client-needs' | 'client-jobs' | 'client-applications' | 'client-profile'
   | 'admin-dashboard' | 'admin-users' | 'admin-job-posts'
   | 'payment-taker-dashboard'
   | 'messages'

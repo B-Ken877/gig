@@ -19,6 +19,7 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'My Profile', page: 'agent-profile', icon: User },
     { label: 'Documents', page: 'agent-documents', icon: FileText },
     { label: 'Availability', page: 'agent-availability', icon: Calendar },
+    { label: 'My Applications', page: 'agent-applications', icon: ClipboardList },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
   client: [
@@ -27,6 +28,7 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'Job Postings', page: 'client-jobs', icon: Globe },
     { label: 'My Needs', page: 'client-needs', icon: Briefcase },
     { label: 'Agent Bank', page: 'client-agents', icon: Users },
+    { label: 'Applications', page: 'client-applications', icon: ClipboardList },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
   payment_taker: [
@@ -45,8 +47,8 @@ function getPageTitle(page: PageType): string {
   const map: Partial<Record<PageType, string>> = {
     home: 'Home', services: 'Services', 'for-clients': 'For Call Centers', careers: 'Careers',
     about: 'About Us', contact: 'Contact', login: 'Login',
-    'agent-dashboard': 'Dashboard', 'agent-profile': 'My Profile', 'agent-documents': 'Documents', 'agent-availability': 'Availability',
-    'client-dashboard': 'Dashboard', 'client-agents': 'Agent Bank', 'client-needs': 'My Staffing Needs', 'client-jobs': 'Job Postings', 'client-profile': 'Company Profile',
+    'agent-dashboard': 'Dashboard', 'agent-profile': 'My Profile', 'agent-documents': 'Documents', 'agent-availability': 'Availability', 'agent-applications': 'My Applications',
+    'client-dashboard': 'Dashboard', 'client-agents': 'Agent Bank', 'client-needs': 'My Staffing Needs', 'client-jobs': 'Job Postings', 'client-applications': 'Applications', 'client-profile': 'Company Profile',
     'admin-dashboard': 'Admin Dashboard', 'admin-users': 'Users', 'admin-job-posts': 'Job Postings',
     'payment-taker-dashboard': 'Payment Requests', 'messages': 'Messages', 'pending-payment': 'Complete Payment',
   };

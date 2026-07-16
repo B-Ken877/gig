@@ -15,10 +15,12 @@ import LoginPage from '@/components/public/LoginPage';
 import RegisterAgentPage from '@/components/public/RegisterAgentPage';
 import RegisterClientPage from '@/components/public/RegisterClientPage';
 import AgentDashboard from '@/components/portal/AgentDashboard';
+import AgentMyApplications from '@/components/portal/AgentMyApplications';
 import AgentProfile from '@/components/portal/AgentProfile';
 import AgentDocuments from '@/components/portal/AgentDocuments';
 import AgentAvailability from '@/components/portal/AgentAvailability';
 import ClientDashboard from '@/components/portal/ClientDashboard';
+import ClientApplications from '@/components/portal/ClientApplications';
 import ClientAgents from '@/components/portal/ClientAgents';
 import ClientNeeds from '@/components/portal/ClientNeeds';
 import ClientJobs from '@/components/portal/ClientJobs';
@@ -36,8 +38,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ShieldAlert, LogIn } from 'lucide-react';
 
 const PORTAL_PAGES = new Set<PageType>([
-  'agent-dashboard','agent-profile','agent-documents','agent-availability',
-  'client-dashboard','client-agents','client-needs','client-jobs','client-profile',
+  'agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications',
+  'client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile',
   'admin-dashboard','admin-users','admin-job-posts',
   'payment-taker-dashboard','messages',
 ]);
@@ -164,9 +166,11 @@ export default function Home() {
             {currentPage === 'agent-profile' && <AgentProfile />}
             {currentPage === 'agent-documents' && <AgentDocuments />}
             {currentPage === 'agent-availability' && <AgentAvailability />}
+            {currentPage === 'agent-applications' && <AgentMyApplications />}
             {currentPage === 'client-dashboard' && <ClientDashboard />}
             {currentPage === 'client-agents' && <ClientAgents />}
             {currentPage === 'client-needs' && <ClientNeeds />}
+            {currentPage === 'client-applications' && <ClientApplications />}
             {currentPage === 'client-jobs' && <ClientJobs />}
             {currentPage === 'client-profile' && <ClientProfile />}
             {currentPage === 'admin-dashboard' && <AdminDashboard />}

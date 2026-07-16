@@ -599,7 +599,7 @@ function ConversationItem({
 // ──────────────────────────────────────────────────────────────
 
 export default function MessagesPage() {
-  const { currentUser } = useAppStore();
+  const { currentUser, pendingChatUserId } = useAppStore();
 
   // Conversations list
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -653,6 +653,7 @@ export default function MessagesPage() {
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
+
 
   // ── Fetch messages for active conversation ──────────────────
 
@@ -732,6 +733,21 @@ export default function MessagesPage() {
     setMessages([]);
     setMobileShowChat(true);
   }, []);
+
+  // Auto-select conversation when navigating from View Application
+  const pendingRef = useRef(pendingChatUserId);
+  useEffect(() => {
+    if (pendingRef.current && conversations.length > 0) {
+      const targetConv = conversations.find(
+        (c) => c.user1Id === pendingRef.current || c.user2Id === pendingRef.current
+      );
+      if (targetConv) {
+        handleSelectConversation(targetConv);
+      }
+      pendingRef.current = null;
+      useAppStore.getState().pendingChatUserId = null;
+    }
+  }, [conversations, handleSelectConversation]);
 
   // ── Send message ────────────────────────────────────────────
 
