@@ -47,7 +47,7 @@ export default function AgentDashboard() {
         return r.json();
       }),
       fetch('/api/call-center-needs/interest', { headers }).then(r => {
-        if (!r.ok) return { appliedNeedIds: [] };
+        if (!r.ok) return { applications: [] };
         return r.json();
       }),
     ])
@@ -60,7 +60,9 @@ export default function AgentDashboard() {
           setUnreadMsgs(msgData.conversations.reduce((sum: number, c: any) => sum + (c.unreadCount || 0), 0));
         }
         if (needsData.needs) setNeeds(needsData.needs);
-        if (interestData?.appliedNeedIds) setAppliedIds(new Set(interestData.appliedNeedIds));
+        // Extract applied need IDs from the applications array
+        const apps = interestData.applications || [];
+        setAppliedIds(new Set(apps.map((a: any) => a.needId).filter(Boolean)));
       })
       .catch(err => setError(err.message))
       .finally(() => { setLoading(false); setNeedsLoading(false); });
@@ -145,7 +147,7 @@ export default function AgentDashboard() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Available Needs</p>
+                <p className="text-sm text-gray-500">Available Jobs</p>
                 <p className="text-2xl font-bold mt-1">{Math.max(0, needs.length - appliedIds.size)}</p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center">
@@ -208,8 +210,8 @@ export default function AgentDashboard() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Briefcase className="h-5 w-5 text-green-600" />
-              <h3 className="text-sm font-semibold">Client Staffing Needs</h3>
-              <Badge variant="secondary" className="text-xs">{needs.length} open</Badge>
+              <h3 className="text-sm font-semibold">Available Jobs</h3>
+              <Badge variant="secondary" className="text-xs">{Math.max(0, needs.length - appliedIds.size)} open</Badge>
             </div>
           </div>
           {needsLoading ? (
@@ -219,7 +221,7 @@ export default function AgentDashboard() {
           ) : needs.length === 0 ? (
             <div className="text-center py-8 text-gray-400">
               <Briefcase className="h-10 w-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No staffing needs posted yet. Check back soon!</p>
+              <p className="text-sm">No jobs posted yet. Check back soon!</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -320,3 +322,4 @@ export default function AgentDashboard() {
     </div>
   );
 }
+
