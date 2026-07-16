@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { User, FileText, Calendar, MessageCircle, ArrowRight, AlertCircle, RefreshCw, Briefcase, MapPin, Clock, Building2, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,8 @@ interface ClientNeed {
   client: { companyName: string; industry: string | null };
 }
 
+const POLL_INTERVAL = 15000;
+
 export default function AgentDashboard() {
   const { currentUser, navigateTo, addToast } = useAppStore();
   const [agent, setAgent] = useState<any>(null);
@@ -24,13 +26,13 @@ export default function AgentDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+  const [totalApplications, setTotalApplications] = useState(0);
   const [applyingNeed, setApplyingNeed] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(true);
 
-  const loadData = () => {
+  const loadData = useCallback(() => {
     if (!currentUser) return;
-    setLoading(true);
-    setError(null);
-
     const headers = { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role };
 
     Promise.all([
@@ -52,6 +54,7 @@ export default function AgentDashboard() {
       }),
     ])
       .then(([agentData, msgData, needsData, interestData]) => {
+        if (!isMountedRef.current) return;
         if (agentData.agents) {
           const me = agentData.agents.find((a: any) => a.userId === currentUser.id);
           if (me) setAgent(me);
@@ -60,15 +63,30 @@ export default function AgentDashboard() {
           setUnreadMsgs(msgData.conversations.reduce((sum: number, c: any) => sum + (c.unreadCount || 0), 0));
         }
         if (needsData.needs) setNeeds(needsData.needs);
-        // Extract applied need IDs from the applications array
         const apps = interestData.applications || [];
+        setTotalApplications(apps.length);
         setAppliedIds(new Set(apps.map((a: any) => a.needId).filter(Boolean)));
       })
-      .catch(err => setError(err.message))
-      .finally(() => { setLoading(false); setNeedsLoading(false); });
-  };
+      .catch(err => {
+        if (isMountedRef.current) setError(err.message);
+      })
+      .finally(() => {
+        if (isMountedRef.current) { setLoading(false); setNeedsLoading(false); }
+      });
+  }, [currentUser]);
 
-  useEffect(() => { loadData(); }, [currentUser]);
+  useEffect(() => {
+    isMountedRef.current = true;
+    if (!currentUser) return;
+    setLoading(true);
+    setError(null);
+    loadData();
+    pollRef.current = setInterval(loadData, POLL_INTERVAL);
+    return () => {
+      isMountedRef.current = false;
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [currentUser, loadData]);
 
   const handleApply = (need: ClientNeed) => {
     if (applyingNeed || appliedIds.has(need.id)) return;
@@ -81,7 +99,9 @@ export default function AgentDashboard() {
       .then(r => {
         if (r.ok) {
           setAppliedIds(prev => new Set([...prev, need.id]));
+          setTotalApplications(prev => prev + 1);
           addToast({ title: 'Application Sent!', description: 'You have successfully applied for "' + need.title + '". ' + (need.client?.companyName || 'The call center') + ' has been notified and will respond in your Messages.', variant: 'success' });
+          loadData();
         } else if (r.status === 409) {
           setAppliedIds(prev => new Set([...prev, need.id]));
           addToast({ title: 'Already Applied', description: 'You have already applied for this need.', variant: 'default' });
@@ -98,7 +118,7 @@ export default function AgentDashboard() {
     { label: 'Documents', desc: 'Upload your resume, ID, certificates', page: 'agent-documents' as const, icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' },
     { label: 'Availability', desc: 'Set your available dates and shifts', page: 'agent-availability' as const, icon: Calendar, color: 'text-green-600', bg: 'bg-green-50' },
     { label: 'Messages', desc: unreadMsgs + ' unread message' + (unreadMsgs !== 1 ? 's' : ''), page: 'messages' as const, icon: MessageCircle, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'My Applications', desc: appliedIds.size + ' application' + (appliedIds.size !== 1 ? 's' : '') + ' submitted', page: 'agent-applications' as const, icon: Briefcase, color: 'text-green-600', bg: 'bg-green-50' },
+    { label: 'My Applications', desc: totalApplications + ' application' + (totalApplications !== 1 ? 's' : '') + ' submitted', page: 'agent-applications' as const, icon: Briefcase, color: 'text-green-600', bg: 'bg-green-50' },
   ];
 
   if (loading) {
@@ -126,7 +146,6 @@ export default function AgentDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Welcome */}
       <Card className="bg-gradient-to-r from-[#0B1A2E] to-[#1a2d4a] border-0">
         <CardContent className="p-6 text-white">
           <h2 className="text-xl font-bold">Welcome back, {currentUser?.name?.split(' ')[0]}!</h2>
@@ -141,7 +160,6 @@ export default function AgentDashboard() {
         </CardContent>
       </Card>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('agent-dashboard' as never)}>
           <CardContent className="p-5">
@@ -162,7 +180,7 @@ export default function AgentDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">My Applications</p>
-                <p className="text-2xl font-bold mt-1">{appliedIds.size}</p>
+                <p className="text-2xl font-bold mt-1">{totalApplications}</p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-green-50 flex items-center justify-center">
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -186,7 +204,6 @@ export default function AgentDashboard() {
         </Card>
       </div>
 
-      {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {quickActions.map(a => {
           const Icon = a.icon;
@@ -204,7 +221,6 @@ export default function AgentDashboard() {
         })}
       </div>
 
-      {/* Client Staffing Needs */}
       <Card>
         <CardContent className="p-5">
           <div className="flex items-center justify-between mb-4">
@@ -290,7 +306,6 @@ export default function AgentDashboard() {
         </CardContent>
       </Card>
 
-      {/* Profile summary */}
       {agent && (
         <Card>
           <CardContent className="p-5">
@@ -308,7 +323,6 @@ export default function AgentDashboard() {
         </Card>
       )}
 
-      {/* No profile hint */}
       {!agent && (
         <Card className="border-amber-200 bg-amber-50/50">
           <CardContent className="p-6 text-center">
@@ -322,4 +336,3 @@ export default function AgentDashboard() {
     </div>
   );
 }
-

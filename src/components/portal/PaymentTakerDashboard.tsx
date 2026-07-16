@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
 import type { PaymentRequest } from '@/lib/types';
 
+const POLL_INTERVAL = 15000;
+
 export default function PaymentTakerDashboard() {
   const { currentUser, addToast } = useAppStore();
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
@@ -15,24 +17,33 @@ export default function PaymentTakerDashboard() {
   const [chatMessages, setChatMessages] = useState<Array<{id:string;senderId:string;content:string}>>([]);
   const [convId, setConvId] = useState<string | null>(null);
   const [newMsg, setNewMsg] = useState('');
-  
   const [loading, setLoading] = useState(true);
+  const [firstLoad, setFirstLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mobileShowChat, setMobileShowChat] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(true);
 
-  const load = () => {
+  const loadRequests = () => {
     if (!currentUser) return;
     fetch('/api/payment-requests?status=pending', { headers: { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role } })
       .then(r => { if (!r.ok) throw new Error('Failed to load payment requests'); return r.json(); })
-      .then(d => { if (d.paymentRequests) setRequests(d.paymentRequests); })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
+      .then(d => { if (d.paymentRequests && isMountedRef.current) setRequests(d.paymentRequests); })
+      .catch(err => { if (isMountedRef.current) setError(err.message); })
+      .finally(() => { if (isMountedRef.current) { setLoading(false); setFirstLoad(false); } });
   };
 
-  useEffect(() => { load(); }, [currentUser]);
+  useEffect(() => {
+    isMountedRef.current = true;
+    loadRequests();
+    pollRef.current = setInterval(loadRequests, POLL_INTERVAL);
+    return () => {
+      isMountedRef.current = false;
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [currentUser]);
 
-  // On mobile, when selected changes, show chat
   useEffect(() => {
     if (selected) setMobileShowChat(true);
     else setMobileShowChat(false);
@@ -53,7 +64,6 @@ export default function PaymentTakerDashboard() {
             return;
           }
         }
-        // No existing conversation - create one (only once per selection)
         if (!selectedConvRef.current) {
           fetch('/api/messages', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
@@ -94,14 +104,12 @@ export default function PaymentTakerDashboard() {
     });
   };
 
-
-
   const handleBackToList = () => {
     setSelected(null);
     setMobileShowChat(false);
   };
 
-  if (loading) {
+  if (loading && firstLoad) {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" />
@@ -116,7 +124,7 @@ export default function PaymentTakerDashboard() {
           <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-3" />
           <p className="text-sm font-medium text-red-700 mb-1">Failed to load payment requests</p>
           <p className="text-xs text-red-500 mb-4">{error}</p>
-          <Button variant="outline" size="sm" onClick={load} className="border-red-300 text-red-600 hover:bg-red-100">
+          <Button variant="outline" size="sm" onClick={loadRequests} className="border-red-300 text-red-600 hover:bg-red-100">
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />Try Again
           </Button>
         </CardContent>
@@ -124,7 +132,6 @@ export default function PaymentTakerDashboard() {
     );
   }
 
-  // Empty state
   if (requests.length === 0 && !selected) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-gray-400">
@@ -137,7 +144,6 @@ export default function PaymentTakerDashboard() {
 
   return (
     <div className="flex flex-col md:flex-row gap-0 md:gap-6 h-[calc(100vh-7rem)]">
-      {/* Left: requests list - hidden on mobile when chat is shown */}
       <div className={`${mobileShowChat ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 shrink-0 border md:rounded-xl bg-white overflow-hidden md:h-full h-60 md:h-auto`}>
         <div className="p-4 border-b bg-gray-50 shrink-0">
           <h3 className="font-semibold text-sm">Pending Payments</h3>
@@ -162,7 +168,6 @@ export default function PaymentTakerDashboard() {
         </div>
       </div>
 
-      {/* Right: chat + actions */}
       <div className={`${!mobileShowChat ? 'hidden md:flex' : 'flex'} flex-1 flex-col border md:rounded-xl bg-white overflow-hidden md:h-full h-[calc(100vh-15rem)] min-h-0`}>
         {!selected ? (
           <div className="flex-1 flex items-center justify-center text-gray-400">
@@ -170,10 +175,8 @@ export default function PaymentTakerDashboard() {
           </div>
         ) : (
           <>
-            {/* Chat header */}
             <div className="px-3 md:px-4 py-3 border-b flex items-center justify-between shrink-0 gap-2">
               <div className="flex items-center gap-2 min-w-0">
-                {/* Back button on mobile */}
                 <Button variant="ghost" size="icon" className="md:hidden shrink-0 h-8 w-8" onClick={handleBackToList}>
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
@@ -185,7 +188,6 @@ export default function PaymentTakerDashboard() {
               <Badge variant="secondary" className="text-xs shrink-0">{selected.amount} {selected.currency} · {selected.feeType}</Badge>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 min-h-0">
               {chatMessages.map(m => {
                 const isMe = m.senderId === currentUser?.id;
@@ -200,7 +202,6 @@ export default function PaymentTakerDashboard() {
               <div ref={messagesEnd} />
             </div>
 
-            {/* Input */}
             <div className="px-3 md:px-4 py-3 border-t flex gap-2 shrink-0">
               <Input value={newMsg} onChange={e => setNewMsg(e.target.value)} placeholder="Type a message..."
                 onKeyDown={e => { if (e.key === 'Enter') sendMessage(); }} className="flex-1" />
