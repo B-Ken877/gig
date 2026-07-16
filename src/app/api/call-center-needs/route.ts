@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { sendPushToRole } from '@/lib/push';
 import { getAuth } from '@/lib/auth-middleware';
 
 function parseRequirements(raw: string): string[] {

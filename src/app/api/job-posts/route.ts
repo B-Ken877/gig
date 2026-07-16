@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { sendPushToRole } from '@/lib/push';
 import { getAuth } from '@/lib/auth-middleware';
 
 export async function GET(req: NextRequest) {
@@ -8,6 +9,15 @@ export async function GET(req: NextRequest) {
       where: { isActive: true },
       orderBy: { createdAt: 'desc' },
     });
+        // Notify agents about new job post
+    try {
+      await sendPushToRole(db, 'agent', {
+        title: 'New Job Posted',
+        body: (jobData.title || 'A new job opportunity') + ' is now available!',
+        url: 'https://167.86.124.101:4001/#agent-dashboard',
+      });
+    } catch (pushErr) { /* push is best-effort */ }
+
     return NextResponse.json({ jobPosts: posts.map(p => ({ ...p, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.toISOString() })) });
   } catch (error) {
     console.error('GET /api/job-posts error:', error);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { sendPushToUser } from '@/lib/push';
 import { getAuth } from '@/lib/auth-middleware';
 
 
@@ -10,7 +11,18 @@ function norm(a: string, b: string): [string, string] {
 export async function POST(req: NextRequest) {
   try {
     const auth = await getAuth(req);
-    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    if ('error' in auth)     // Push notification to the client
+    try {
+      const client = await db.user.findUnique({ where: { id: need.clientId }, select: { name: true } });
+      const agent = await db.user.findUnique({ where: { id: agentId }, select: { name: true } });
+      await sendPushToUser(db, need.clientId, {
+        title: 'New Application Received',
+        body: (agent?.name || 'An agent') + ' applied for "' + (need.title || 'your staffing need') + '"',
+        url: 'https://167.86.124.101:4001/#client-applications',
+      });
+    } catch (pushErr) { /* push is best-effort */ }
+
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
     if (auth.role !== 'agent') return NextResponse.json({ error: 'Agent only' }, { status: 403 });
 
     const body = await req.json();
