@@ -7,7 +7,7 @@ import { useAppStore, authFetch } from '@/lib/store';
 
 export default function ClientDashboard() {
   const { currentUser, navigateTo } = useAppStore();
-  const [stats, setStats] = useState({ agents: 0, jobs: 0, needs: 0 });
+  const [stats, setStats] = useState({ agents: 0, jobs: 0, needs: 0, applications: 0 });
   const [companyName, setCompanyName] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -31,7 +31,12 @@ export default function ClientDashboard() {
 
     authFetch('/api/call-center-needs')
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (Array.isArray(d)) setStats(s => ({ ...s, needs: d.length })); })
+      .then(d => { if (d?.needs) setStats(s => ({ ...s, needs: d.needs.length })); })
+      .catch(() => {});
+
+    authFetch('/api/call-center-needs/interest')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.applications) setStats(s => ({ ...s, applications: d.applications.length })); })
       .catch(() => {});
 
     setLoading(false);
@@ -59,7 +64,7 @@ export default function ClientDashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('client-jobs' as never)}>
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
@@ -97,6 +102,20 @@ export default function ClientDashboard() {
               </div>
               <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center">
                 <Globe className="h-5 w-5 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('client-applications' as never)}>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Applications</p>
+                <p className="text-2xl font-bold mt-1">{stats.applications}</p>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-green-50 flex items-center justify-center">
+                <MessageCircle className="h-5 w-5 text-green-600" />
               </div>
             </div>
           </CardContent>

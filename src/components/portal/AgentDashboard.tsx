@@ -96,6 +96,7 @@ export default function AgentDashboard() {
     { label: 'Documents', desc: 'Upload your resume, ID, certificates', page: 'agent-documents' as const, icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' },
     { label: 'Availability', desc: 'Set your available dates and shifts', page: 'agent-availability' as const, icon: Calendar, color: 'text-green-600', bg: 'bg-green-50' },
     { label: 'Messages', desc: unreadMsgs + ' unread message' + (unreadMsgs !== 1 ? 's' : ''), page: 'messages' as const, icon: MessageCircle, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'My Applications', desc: appliedIds.size + ' application' + (appliedIds.size !== 1 ? 's' : '') + ' submitted', page: 'agent-applications' as const, icon: Briefcase, color: 'text-green-600', bg: 'bg-green-50' },
   ];
 
   if (loading) {
@@ -137,6 +138,51 @@ export default function AgentDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('agent-dashboard' as never)}>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Available Needs</p>
+                <p className="text-2xl font-bold mt-1">{Math.max(0, needs.length - appliedIds.size)}</p>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                <Briefcase className="h-5 w-5 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('agent-applications' as never)}>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">My Applications</p>
+                <p className="text-2xl font-bold mt-1">{appliedIds.size}</p>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-green-50 flex items-center justify-center">
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('messages' as never)}>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Unread Messages</p>
+                <p className="text-2xl font-bold mt-1">{unreadMsgs}</p>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center">
+                <MessageCircle className="h-5 w-5 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
