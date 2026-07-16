@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { sendPushToRole } from '@/lib/push';
 import { getAuth } from '@/lib/auth-middleware';
+import { createNotificationBulk } from '@/lib/notifications';
 
 function parseRequirements(raw: string): string[] {
   if (!raw) return [];
@@ -17,8 +17,6 @@ function parseRequirements(raw: string): string[] {
     return raw.split(',').map(s => s.trim()).filter(Boolean);
   }
 }
-
-
 
 export async function GET(req: NextRequest) {
   try {
@@ -63,6 +61,26 @@ export async function POST(req: NextRequest) {
         requirements: JSON.stringify(requirements || []),
       },
     });
+
+    // Notify all agents about new staffing need (in-app + push)
+    try {
+      const agents = await db.user.findMany({
+        where: { role: 'agent', isActive: true },
+        select: { id: true },
+      });
+      if (agents.length > 0) {
+        await createNotificationBulk(agents.map(a => a.id), {
+          title: 'New Staffing Need',
+          message: client.companyName + ' posted a new need: "' + title + '"',
+          type: 'need',
+          pushBody: client.companyName + ' needs staff: ' + title,
+          pushUrl: 'https://167.86.124.101:4001/#agent-dashboard',
+        });
+      }
+    } catch (notifErr) {
+      console.error('[call-center-needs POST] notification failed:', notifErr);
+    }
+
     return NextResponse.json({
       need: {
         ...need,
@@ -93,5 +111,4 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }
-
 

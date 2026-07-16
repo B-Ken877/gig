@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { sendPushToRole } from '@/lib/push';
 import { getAuth } from '@/lib/auth-middleware';
+import { createNotificationBulk } from '@/lib/notifications';
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,14 +9,6 @@ export async function GET(req: NextRequest) {
       where: { isActive: true },
       orderBy: { createdAt: 'desc' },
     });
-        // Notify agents about new job post
-    try {
-      await sendPushToRole(db, 'agent', {
-        title: 'New Job Posted',
-        body: (jobData.title || 'A new job opportunity') + ' is now available!',
-        url: 'https://167.86.124.101:4001/#agent-dashboard',
-      });
-    } catch (pushErr) { /* push is best-effort */ }
 
     return NextResponse.json({ jobPosts: posts.map(p => ({ ...p, createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.toISOString() })) });
   } catch (error) {
@@ -42,6 +34,26 @@ export async function POST(req: NextRequest) {
     if (clientId) data.clientId = clientId;
 
     const post = await db.jobPost.create({ data: data as any });
+
+    // Notify all agents about new job post (in-app + push)
+    try {
+      const agents = await db.user.findMany({
+        where: { role: 'agent', isActive: true },
+        select: { id: true },
+      });
+      if (agents.length > 0) {
+        await createNotificationBulk(agents.map(a => a.id), {
+          title: 'New Job Posted',
+          message: 'A new job "' + jobTitle + '" at ' + companyName + ' is now available!',
+          type: 'job_post',
+          pushBody: companyName + ' is hiring: ' + jobTitle,
+          pushUrl: 'https://167.86.124.101:4001/#agent-dashboard',
+        });
+      }
+    } catch (notifErr) {
+      console.error('[job-posts POST] notification failed:', notifErr);
+    }
+
     return NextResponse.json({ jobPost: { ...post, createdAt: post.createdAt.toISOString() } }, { status: 201 });
   } catch (error) {
     console.error('POST /api/job-posts error:', error);
@@ -66,3 +78,4 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to delete job post' }, { status: 500 });
   }
 }
+

@@ -63,7 +63,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const unreadCount = (notifications || []).filter((n) => !n.isRead).length;
 
   useEffect(() => { if (window.innerWidth < 1024) setSidebarOpen(false); }, [currentPage, setSidebarOpen]);
-  useEffect(() => {
   // Browser push notification subscription
   useEffect(() => {
     if (typeof window === 'undefined' || !currentUser || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
@@ -84,35 +83,21 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       } catch (e) { /* push not supported or user declined */ }
     })();
   }, [currentUser]);
-  // Browser push notification subscription
+
+  // Fetch in-app notifications
   useEffect(() => {
-    if (typeof window === 'undefined' || !currentUser || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    (async () => {
-      try {
-        const reg = await navigator.serviceWorker.register('/sw.js');
-        const existing = await reg.pushManager.getSubscription();
-        if (!existing) {
-          const res = await fetch('/api/push/subscribe');
-          const { vapidPublicKey } = await res.json();
-          const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidPublicKey });
-          await fetch('/api/push/subscribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
-            body: JSON.stringify({ subscription: sub }),
-          });
-        }
-      } catch (e) { /* push not supported or user declined */ }
-    })();
-  }, [currentUser]);
     if (!currentUser) return;
-    fetch('/api/notifications?userId=' + currentUser.id).then(r => r.json()).then(data => { if (Array.isArray(data)) useAppStore.getState().setData('notifications', data); }).catch(() => {});
+    fetch('/api/notifications?userId=' + currentUser.id)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) useAppStore.getState().setData('notifications', data); })
+      .catch(() => {});
   }, [currentUser]);
 
   const markAllRead = async () => {
     if (!currentUser || !notifications) return;
     const unread = notifications.filter(n => !n.isRead);
     for (const n of unread) {
-      fetch('/api/notifications/' + n.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role }, body: JSON.stringify({ isRead: true }) }).catch(() => {});
+      fetch('/api/notifications/' + n.id, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role }, body: JSON.stringify({ isRead: true }) }).catch(() => {});
     }
     useAppStore.getState().setData('notifications', notifications.map(n => ({ ...n, isRead: true })));
   };
