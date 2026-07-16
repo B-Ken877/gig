@@ -28,6 +28,7 @@ model User {
   notifications Notification[]
   paymentRequestsHandled PaymentRequest[] @relation("PaymentTaker")
   paymentRequests PaymentRequest[]
+  pushSubscription  PushSubscription?
 
   @@index([role])
   @@index([email])
@@ -251,4 +252,16 @@ model Message {
   @@index([conversationId])
   @@index([senderId])
   @@index([isRead])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  endpoint  String
+  keys      String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

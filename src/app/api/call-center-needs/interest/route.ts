@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { sendPushToUser } from '@/lib/push';
 import { getAuth } from '@/lib/auth-middleware';
-
+import { createNotification } from '@/lib/notifications';
 
 function norm(a: string, b: string): [string, string] {
   return a < b ? [a, b] : [b, a];
@@ -11,18 +10,7 @@ function norm(a: string, b: string): [string, string] {
 export async function POST(req: NextRequest) {
   try {
     const auth = await getAuth(req);
-    if ('error' in auth)     // Push notification to the client
-    try {
-      const client = await db.user.findUnique({ where: { id: need.clientId }, select: { name: true } });
-      const agent = await db.user.findUnique({ where: { id: agentId }, select: { name: true } });
-      await sendPushToUser(db, need.clientId, {
-        title: 'New Application Received',
-        body: (agent?.name || 'An agent') + ' applied for "' + (need.title || 'your staffing need') + '"',
-        url: 'https://167.86.124.101:4001/#client-applications',
-      });
-    } catch (pushErr) { /* push is best-effort */ }
-
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
+    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
     if (auth.role !== 'agent') return NextResponse.json({ error: 'Agent only' }, { status: 403 });
 
     const body = await req.json();
@@ -50,23 +38,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Get agent name
+    // Get agent info
     const agent = await db.user.findUnique({ where: { id: agentUserId }, select: { name: true, email: true, phone: true } });
     const agentProfile = await db.agent.findUnique({ where: { userId: agentUserId } });
+    const agentName = agent?.name || 'An agent';
 
+    // Create in-app notification for client (with push)
     const notification = await db.notification.create({
       data: {
         userId: clientUserId,
         title: 'New Agent Interested!',
         message: JSON.stringify({
           agentId: agentUserId,
-          agentName: agent?.name || 'An agent',
+          agentName,
           agentEmail: agent?.email || '',
           agentPhone: agent?.phone || '',
           agentCountry: agentProfile?.country || '',
-          agentLanguages: agentProfile?.languages || [],
+          agentLanguages: agentProfile?.languages || '[]',
           agentExperience: agentProfile?.experience || 0,
-          agentSkills: agentProfile?.skills || [],
+          agentSkills: agentProfile?.skills || '[]',
           agentStatus: agentProfile?.status || 'Available',
           needId: need.id,
           needTitle: need.title,
@@ -79,22 +69,43 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Send push notification to client about new application
+    await createNotification({
+      userId: clientUserId,
+      title: 'New Application Received',
+      message: agentName + ' applied for "' + (need.title || 'your staffing need') + '"',
+      type: 'application',
+      pushBody: agentName + ' applied for "' + need.title + '"',
+      pushUrl: 'https://167.86.124.101:4001/#client-applications',
+    });
+
     // Create or find conversation
     const [u1, u2] = norm(agentUserId, clientUserId);
     let conversation = await db.conversation.findUnique({
       where: { user1Id_user2Id: { user1Id: u1, user2Id: u2 } },
     });
 
+    const introMsg = 'Hi! I\'m interested in your staffing need: "' + need.title + '"';
+
     if (!conversation) {
       conversation = await db.conversation.create({
-        data: { user1Id: u1, user2Id: u2, lastMessage: 'Hi! I\'m interested in your staffing need: "' + need.title + '"' },
+        data: { user1Id: u1, user2Id: u2, lastMessage: introMsg },
       });
     } else {
-      await db.conversation.update({ where: { id: conversation.id }, data: { lastMessage: 'Hi! I\'m interested in your staffing need: "' + need.title + '"' } });
+      await db.conversation.update({ where: { id: conversation.id }, data: { lastMessage: introMsg } });
     }
 
-    const preMessage = 'Hi! I saw your staffing need for "' + need.title + '" and I\'m very interested. I believe my skills and experience make me a great fit. Let\'s discuss further!';
-    await db.message.create({ data: { conversationId: conversation.id, senderId: agentUserId, content: preMessage } });
+    const fullMsg = 'Hi! I saw your staffing need for "' + need.title + '" and I\'m very interested. I believe my skills and experience make me a great fit. Let\'s discuss further!';
+    await db.message.create({
+      data: { conversationId: conversation.id, senderId: agentUserId, content: fullMsg },
+    });
+
+    // Update conversation unread count for client
+    const clientField = u1 === clientUserId ? 'unreadUser1' : 'unreadUser2';
+    await db.conversation.update({
+      where: { id: conversation.id },
+      data: { [clientField]: { increment: 1 } },
+    });
 
     return NextResponse.json({ success: true, notificationId: notification.id, conversationId: conversation.id });
   } catch (error) {
@@ -112,7 +123,6 @@ export async function GET(req: NextRequest) {
     if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     if (auth.role === 'client') {
-      // Get all interest notifications for this client
       const notifications = await db.notification.findMany({
         where: { userId: auth.userId, type: 'interest' },
         orderBy: { createdAt: 'desc' },
@@ -164,7 +174,6 @@ export async function GET(req: NextRequest) {
     }
 
     if (auth.role === 'agent') {
-      // Get all interest notifications that contain this agent's ID
       const notifications = await db.notification.findMany({
         where: { type: 'interest', message: { contains: auth.userId } },
         orderBy: { createdAt: 'desc' },
@@ -192,3 +201,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }
+

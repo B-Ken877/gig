@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { sendPushToUser } from '@/lib/push';
 import { getAuth } from '@/lib/auth-middleware';
+import { createNotification } from '@/lib/notifications';
 
 function normalizePair(idA: string, idB: string): [string, string] {
   return idA < idB ? [idA, idB] : [idB, idA];
@@ -101,19 +101,34 @@ export async function POST(req: NextRequest) {
       data: { lastMessage: content.trim(), lastMessageAt: new Date() },
     });
 
-    // Push notification to recipient
+    // Notify recipient (in-app + push)
     try {
       const conv = await db.conversation.findUnique({ where: { id: convId } });
       if (conv) {
         const recipientId = userId === conv.user1Id ? conv.user2Id : conv.user1Id;
+        // Increment unread count for recipient
+        const field = conv.user1Id === recipientId ? 'unreadUser1' : 'unreadUser2';
+        await db.conversation.update({
+          where: { id: convId },
+          data: { [field]: { increment: 1 } },
+        });
+
         const sender = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
-        await sendPushToUser(db, recipientId, {
-          title: 'New Message from ' + (sender?.name || 'Someone'),
-          body: content.trim().substring(0, 100) + (content.trim().length > 100 ? '...' : ''),
-          url: 'https://167.86.124.101:4001/#messages',
+        const senderName = sender?.name || 'Someone';
+        const preview = content.trim().substring(0, 100) + (content.trim().length > 100 ? '...' : '');
+
+        await createNotification({
+          userId: recipientId,
+          title: 'New Message from ' + senderName,
+          message: preview,
+          type: 'message',
+          pushBody: senderName + ': ' + preview,
+          pushUrl: 'https://167.86.124.101:4001/#messages',
         });
       }
-    } catch (pushErr) { /* push is best-effort */ }
+    } catch (notifErr) {
+      console.error('[messages POST] notification failed:', notifErr);
+    }
 
     return NextResponse.json({ message: { ...message, createdAt: message.createdAt.toISOString() }, conversationId: convId }, { status: 201 });
   } catch (error) {
@@ -121,3 +136,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
   }
 }
+
