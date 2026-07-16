@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/lib/store';
 import type { PageType } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -61,6 +61,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const navItems = (NAV_CONFIG[role] || []) as NavItem[];
   const pageTitle = getPageTitle(currentPage);
   const unreadCount = (notifications || []).filter((n) => !n.isRead).length;
+  const notifPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => { if (window.innerWidth < 1024) setSidebarOpen(false); }, [currentPage, setSidebarOpen]);
   // Browser push notification subscription
@@ -84,14 +85,26 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     })();
   }, [currentUser]);
 
-  // Fetch in-app notifications
+  // Fetch in-app notifications (immediate + poll every 15s)
   useEffect(() => {
     if (!currentUser) return;
-    fetch('/api/notifications?userId=' + currentUser.id)
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) useAppStore.getState().setData('notifications', data); })
-      .catch(() => {});
+    const fetchNotifs = () => {
+      fetch('/api/notifications?userId=' + currentUser.id)
+        .then(r => r.json())
+        .then(data => { if (Array.isArray(data)) useAppStore.getState().setData('notifications', data); })
+        .catch(() => {});
+    };
+    fetchNotifs();
+    notifPollRef.current = setInterval(fetchNotifs, 15000);
+    return () => { if (notifPollRef.current) clearInterval(notifPollRef.current); };
   }, [currentUser]);
+
+  const markSingleRead = useCallback(async (notifId: string) => {
+    if (!currentUser) return;
+    fetch('/api/notifications/' + notifId, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role }, body: JSON.stringify({ isRead: true }) }).catch(() => {});
+    const updated = (notifications || []).filter(n => n.id !== notifId);
+    useAppStore.getState().setData('notifications', updated);
+  }, [currentUser, notifications]);
 
   const markAllRead = async () => {
     if (!currentUser || !notifications) return;
@@ -166,7 +179,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
                 {(!notifications || notifications.length === 0) ? (
                   <div className="px-3 py-4 text-sm text-muted-foreground text-center">No notifications</div>
                 ) : notifications.slice(0, 5).map(n => (
-                  <DropdownMenuItem key={n.id} className="flex flex-col items-start gap-1 py-2.5 px-3">
+                  <DropdownMenuItem key={n.id} className="flex flex-col items-start gap-1 py-2.5 px-3 cursor-pointer" onClick={() => markSingleRead(n.id)}>
                     <div className="flex items-center gap-2 w-full">
                       {!n.isRead && <span className="h-2 w-2 rounded-full bg-[#16A34A] shrink-0" />}
                       <span className={cn('text-sm', !n.isRead ? 'font-semibold' : 'font-medium text-gray-600')}>{n.title}</span>
