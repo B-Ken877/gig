@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     // Create payment request
     const feeType = effectiveRole === 'agent' ? 'annual' : 'monthly';
-    const amount = effectiveRole === 'agent' ? 2000 : 3000;
+    const amount = 2000;
     await db.paymentRequest.create({
       data: {
         userId: user.id,
