@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { ClipboardList, CheckCircle2, XCircle, Clock, Send, MessageCircle, User, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -31,7 +32,7 @@ interface TicketMessage {
 }
 
 export default function TicketsPage() {
-  const { currentUser, addToast, navigateTo } = useAppStore();
+  const { currentUser, addToast } = useAppStore();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'open' | 'closed'>('all');
@@ -41,8 +42,6 @@ export default function TicketsPage() {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [closing, setClosing] = useState<string | null>(null);
-
-  const supportAgentId = 'cmrjo435c0001kqp7e69n63f5';
 
   const fetchTickets = useCallback(() => {
     if (!currentUser) return;
@@ -69,20 +68,14 @@ export default function TicketsPage() {
   const openChat = (ticket: Ticket) => {
     setChatTicket(ticket);
     setChatMessages([]);
-    if (ticket.conversationId) {
-      fetchChatMessages(ticket);
-    } else {
-      setChatMessages([]);
-    }
+    if (ticket.conversationId) fetchChatMessages(ticket);
   };
 
   const sendChatMessage = async () => {
     if (!chatInput.trim() || !chatTicket || !currentUser) return;
     const msg = chatInput.trim();
     setChatInput('');
-
     let convId = chatTicket.conversationId;
-
     try {
       if (!convId) {
         const res = await authFetch('/api/conversations', {
@@ -101,7 +94,6 @@ export default function TicketsPage() {
           setChatTicket({ ...chatTicket, conversationId: convId });
         }
       }
-
       if (convId) {
         await authFetch('/api/conversations/' + convId + '/messages', {
           method: 'POST',
@@ -109,12 +101,8 @@ export default function TicketsPage() {
           body: JSON.stringify({ content: msg }),
         });
         const newMsg: TicketMessage = {
-          id: 'temp-' + Date.now(),
-          senderId: currentUser.id,
-          senderRole: currentUser.role,
-          content: msg,
-          isRead: false,
-          createdAt: new Date().toISOString(),
+          id: 'temp-' + Date.now(), senderId: currentUser.id, senderRole: currentUser.role,
+          content: msg, isRead: false, createdAt: new Date().toISOString(),
           sender: { name: currentUser.name, role: currentUser.role },
         };
         setChatMessages(prev => [...prev, newMsg]);
@@ -128,16 +116,13 @@ export default function TicketsPage() {
     setClosing(ticketId);
     try {
       const res = await authFetch('/api/support-tickets', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: ticketId, status: 'closed' }),
       });
       if (res.ok) {
         addToast({ title: 'Ticket Closed', description: 'Ticket has been resolved.', variant: 'success' });
         fetchTickets();
-        if (chatTicket && chatTicket.id === ticketId) {
-          setChatTicket(prev => prev ? { ...prev, status: 'closed' } : null);
-        }
+        if (chatTicket && chatTicket.id === ticketId) setChatTicket(prev => prev ? { ...prev, status: 'closed' } : null);
       }
     } catch {
       addToast({ title: 'Error', description: 'Failed to close ticket', variant: 'destructive' });
@@ -149,19 +134,14 @@ export default function TicketsPage() {
   const openCount = tickets.filter(t => t.status === 'open').length;
   const closedCount = tickets.filter(t => t.status === 'closed').length;
 
-  if (loading) {
-    return <div className="flex items-center justify-center py-16"><div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
-  }
+  if (loading) return <div className="flex items-center justify-center py-16"><div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
 
-  // Chat panel view
   if (chatTicket) {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => { setChatTicket(null); setChatMessages([]); }}>
-            &larr; Back to Tickets
-          </Button>
-          <div>
+          <Button variant="outline" size="sm" onClick={() => { setChatTicket(null); setChatMessages([]); }}>&larr; Back to Tickets</Button>
+          <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold text-gray-900">{chatTicket.subject}</h3>
             <p className="text-xs text-gray-500">from {chatTicket.user?.name || 'User'} ({chatTicket.user?.role || ''})</p>
           </div>
@@ -173,32 +153,32 @@ export default function TicketsPage() {
         </div>
         <Card className="flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
           <CardContent className="flex-1 flex flex-col p-0 min-h-0">
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {chatMessages.length === 0 && !chatLoading && (
-                <div className="text-center py-8 text-sm text-gray-400">
-                  <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                  <p>No messages yet. Start the conversation.</p>
-                </div>
-              )}
-              {chatMessages.map(m => {
-                const isMe = m.senderId === currentUser?.id;
-                return (
-                  <div key={m.id} className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
-                    <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5 text-sm', isMe ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-800')}>
-                      {!isMe && <p className="text-[10px] font-semibold text-gray-500 mb-0.5">{m.sender?.name || 'User'}</p>}
-                      <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                      <p className={cn('text-[10px] mt-1', isMe ? 'text-green-100' : 'text-gray-400')}>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                    </div>
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="p-4 space-y-3">
+                {chatMessages.length === 0 && !chatLoading && (
+                  <div className="text-center py-8 text-sm text-gray-400">
+                    <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                    <p>No messages yet. Start the conversation.</p>
                   </div>
-                );
-              })}
-              {chatLoading && <div className="text-center text-xs text-gray-400">Loading messages...</div>}
-            </div>
+                )}
+                {chatMessages.map(m => {
+                  const isMe = m.senderId === currentUser?.id;
+                  return (
+                    <div key={m.id} className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
+                      <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5 text-sm', isMe ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-800')}>
+                        {!isMe && <p className="text-[10px] font-semibold text-gray-500 mb-0.5">{m.sender?.name || 'User'}</p>}
+                        <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                        <p className={cn('text-[10px] mt-1', isMe ? 'text-green-100' : 'text-gray-400')}>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {chatLoading && <div className="text-center text-xs text-gray-400">Loading messages...</div>}
+              </div>
+            </ScrollArea>
             <div className="border-t p-3 flex gap-2">
               <Textarea value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }}} placeholder="Type your reply..." rows={1} className="flex-1 resize-none border-gray-200 text-sm min-h-0" />
-              <Button onClick={sendChatMessage} disabled={!chatInput.trim()} className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90 shrink-0 h-10 w-10 p-0">
-                <Send className="h-4 w-4" />
-              </Button>
+              <Button onClick={sendChatMessage} disabled={!chatInput.trim()} className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90 shrink-0 h-10 w-10 p-0"><Send className="h-4 w-4" /></Button>
             </div>
           </CardContent>
         </Card>
@@ -206,7 +186,6 @@ export default function TicketsPage() {
     );
   }
 
-  // Ticket list view
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -215,12 +194,11 @@ export default function TicketsPage() {
           <p className="text-sm text-gray-500 mt-0.5">Manage and respond to support requests from agents and clients.</p>
         </div>
         <div className="flex gap-2">
-          <Badge variant="secondary" className={cn('cursor-pointer text-xs px-3 py-1', filter === 'all' className={cn('cursor-pointer text-xs px-3 py-1', filter === 'all' && 'bg-green-600 text-white')}className={cn('cursor-pointer text-xs px-3 py-1', filter === 'all' && 'bg-green-600 text-white')} 'bg-green-600 text-white')} onClick={() => setFilter('all')}>All ({tickets.length})</Badge>
-          <Badge variant="outline" className={cn('cursor-pointer text-xs px-3 py-1', filter === 'open' && 'bg-green-100 text-green-700 border-green-300')} onClick={() => setFilter('open')}>{openCount} Open</Badge>
-          <Badge variant="outline" className={cn('cursor-pointer text-xs px-3 py-1', filter === 'closed' && 'bg-gray-200 text-gray-700')} onClick={() => setFilter('closed')}>{closedCount} Closed</Badge>
+          <Badge variant="secondary" className={cn('cursor-pointer text-xs px-3 py-1 select-none', filter === 'all' && 'bg-green-600 text-white')} onClick={() => setFilter('all')}>All ({tickets.length})</Badge>
+          <Badge variant="outline" className={cn('cursor-pointer text-xs px-3 py-1 select-none', filter === 'open' && 'bg-green-100 text-green-700 border-green-300')} onClick={() => setFilter('open')}>{openCount} Open</Badge>
+          <Badge variant="outline" className={cn('cursor-pointer text-xs px-3 py-1 select-none', filter === 'closed' && 'bg-gray-200 text-gray-700')} onClick={() => setFilter('closed')}>{closedCount} Closed</Badge>
         </div>
       </div>
-
       {filtered.length === 0 ? (
         <Card><CardContent className="p-12 text-center">
           <ClipboardList className="h-10 w-10 mx-auto mb-3 text-gray-300" />
