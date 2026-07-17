@@ -70,6 +70,8 @@ export async function POST(req: NextRequest) {
         title: 'New Support Ticket',
         message: 'A new ticket: "' + subject + '"',
         type: 'support_ticket',
+        pushBody: 'New ticket from ' + (auth.userId || 'a user') + ': ' + subject,
+        pushUrl: 'https://167.86.124.101:4001/#tickets',
       });
     }
 
@@ -91,13 +93,11 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { id, status, conversationId } = body;
+    const { id, status } = body;
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
     const data: Record<string, unknown> = {};
     if (status) data.status = status;
-    if (conversationId) data.conversationId = conversationId;
-    data.updatedAt = new Date();
 
     const ticket = await db.supportTicket.update({ where: { id }, data });
 
@@ -106,6 +106,8 @@ export async function PUT(req: NextRequest) {
         title: 'Ticket Closed',
         message: 'Your ticket "' + ticket.subject + '" has been resolved.',
         type: 'support_ticket',
+        pushBody: 'Your ticket has been resolved',
+        pushUrl: 'https://167.86.124.101:4001/#support',
       });
     }
 

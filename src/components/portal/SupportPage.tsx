@@ -15,21 +15,18 @@ interface Ticket {
   subject: string;
   description: string;
   status: string;
-  conversationId: string | null;
   assignedTo: string | null;
   createdAt: string;
   updatedAt: string;
   user?: { id: string; name: string; role: string };
 }
 
-interface ChatMessage {
+interface TicketMessage {
   id: string;
   senderId: string;
   senderRole: string;
   content: string;
-  isRead: boolean;
   createdAt: string;
-  sender?: { name: string; role: string };
 }
 
 const SUPPORT_AGENT_ID = 'cmrjo435c0001kqp7e69n63f5';
@@ -45,11 +42,12 @@ export default function SupportPage() {
 
   // Chat state
   const [chatTicket, setChatTicket] = useState<Ticket | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatMessages, setChatMessages] = useState<TicketMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchTickets = useCallback(() => {
     if (!currentUser) return;
@@ -67,36 +65,40 @@ export default function SupportPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const fetchChatMessages = async (ticket: Ticket) => {
-    if (!ticket.conversationId) {
-      setChatMessages([]);
+  // Poll for new messages while chat is open
+  useEffect(() => {
+    if (!chatTicket || chatTicket.status === 'closed') {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       return;
     }
-    setChatLoading(true);
-    try {
-      const res = await authFetch('/api/conversations/' + ticket.conversationId + '/messages');
-      const data = await res.json();
-      if (data.messages) setChatMessages(data.messages);
-      else setChatMessages([]);
-    } catch {
-      setChatMessages([]);
-    }
-    setChatLoading(false);
-  };
+    const fetchMsgs = () => {
+      authFetch('/api/support-tickets/' + chatTicket.id + '/messages')
+        .then(r => r.json())
+        .then(data => { if (data.messages) setChatMessages(data.messages); })
+        .catch(() => {});
+    };
+    fetchMsgs();
+    pollRef.current = setInterval(fetchMsgs, 5000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [chatTicket]);
 
   const openChat = (ticket: Ticket) => {
     setChatTicket(ticket);
     setChatMessages([]);
     setChatInput('');
-    if (ticket.conversationId) {
-      fetchChatMessages(ticket);
-    }
+    setChatLoading(true);
+    authFetch('/api/support-tickets/' + ticket.id + '/messages')
+      .then(r => r.json())
+      .then(data => { if (data.messages) setChatMessages(data.messages); else setChatMessages([]); })
+      .catch(() => setChatMessages([]))
+      .finally(() => setChatLoading(false));
   };
 
   const goBack = () => {
     setChatTicket(null);
     setChatMessages([]);
     setChatInput('');
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     fetchTickets();
   };
 
@@ -105,48 +107,15 @@ export default function SupportPage() {
     const msg = chatInput.trim();
     setChatInput('');
     setSendingMsg(true);
-
-    let convId = chatTicket.conversationId;
-
     try {
-      // Create conversation if it doesn't exist
-      if (!convId) {
-        const res = await authFetch('/api/conversations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ otherUserId: SUPPORT_AGENT_ID }),
-        });
+      const res = await authFetch('/api/support-tickets/' + chatTicket.id + '/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: msg }),
+      });
+      if (res.ok) {
         const data = await res.json();
-        convId = data.conversation?.id;
-        if (convId) {
-          // Link conversation to ticket
-          await authFetch('/api/support-tickets', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: chatTicket.id, conversationId: convId }),
-          });
-          setChatTicket(prev => prev ? { ...prev, conversationId: convId } : null);
-        }
-      }
-
-      if (convId) {
-        const msgRes = await authFetch('/api/conversations/' + convId + '/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: msg }),
-        });
-        if (msgRes.ok) {
-          const newMsg: ChatMessage = {
-            id: 'temp-' + Date.now(),
-            senderId: currentUser.id,
-            senderRole: currentUser.role,
-            content: msg,
-            isRead: false,
-            createdAt: new Date().toISOString(),
-            sender: { name: currentUser.name, role: currentUser.role },
-          };
-          setChatMessages(prev => [...prev, newMsg]);
-        }
+        if (data.message) setChatMessages(prev => [...prev, data.message]);
       }
     } catch {
       addToast({ title: 'Error', description: 'Failed to send message', variant: 'destructive' });
@@ -202,10 +171,21 @@ export default function SupportPage() {
           <CardContent className="flex-1 flex flex-col p-0 min-h-0">
             <ScrollArea className="flex-1 min-h-0">
               <div className="p-4 space-y-3">
+                {/* Show ticket description as first message */}
+                <div className="flex justify-start">
+                  <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm bg-blue-50 border border-blue-100 text-gray-700">
+                    <p className="text-[10px] font-semibold mb-0.5 text-blue-600">Ticket Description</p>
+                    <p className="whitespace-pre-wrap break-words">{chatTicket.description}</p>
+                    <p className="text-[10px] mt-1 text-gray-400">
+                      {new Date(chatTicket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+
                 {chatMessages.length === 0 && !chatLoading && (
-                  <div className="text-center py-12">
-                    <Headphones className="h-10 w-10 mx-auto mb-3 text-gray-300" />
-                    <p className="text-sm text-gray-500">No messages yet. Send a message to start chatting with the support agent.</p>
+                  <div className="text-center py-8">
+                    <Headphones className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-xs text-gray-400">No messages yet. Send a message to start chatting.</p>
                   </div>
                 )}
                 {chatMessages.map(m => {
@@ -214,7 +194,7 @@ export default function SupportPage() {
                     <div key={m.id} className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
                       <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5 text-sm', isMe ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-800')}>
                         {!isMe && (
-                          <p className="text-[10px] font-semibold mb-0.5" style={{ color: isMe ? undefined : '#16A34A' }}>
+                          <p className="text-[10px] font-semibold mb-0.5" style={{ color: '#16A34A' }}>
                             Support Agent
                           </p>
                         )}

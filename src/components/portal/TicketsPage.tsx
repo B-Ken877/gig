@@ -1,12 +1,12 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore, authFetch } from '@/lib/store';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ClipboardList, CheckCircle2, XCircle, Clock, Send, MessageCircle, User, ChevronDown, ChevronUp } from 'lucide-react';
+import { ClipboardList, CheckCircle2, XCircle, Clock, Send, MessageCircle, User, ChevronDown, ChevronUp, ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface Ticket {
@@ -14,7 +14,6 @@ interface Ticket {
   subject: string;
   description: string;
   status: string;
-  conversationId: string | null;
   assignedTo: string | null;
   createdAt: string;
   updatedAt: string;
@@ -26,9 +25,7 @@ interface TicketMessage {
   senderId: string;
   senderRole: string;
   content: string;
-  isRead: boolean;
   createdAt: string;
-  sender?: { name: string; role: string };
 }
 
 export default function TicketsPage() {
@@ -41,7 +38,10 @@ export default function TicketsPage() {
   const [chatMessages, setChatMessages] = useState<TicketMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [sendingMsg, setSendingMsg] = useState(false);
   const [closing, setClosing] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchTickets = useCallback(() => {
     if (!currentUser) return;
@@ -54,62 +54,37 @@ export default function TicketsPage() {
 
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
 
-  const fetchChatMessages = async (ticket: Ticket) => {
-    if (!ticket.conversationId) return;
-    setChatLoading(true);
-    try {
-      const res = await authFetch('/api/conversations/' + ticket.conversationId + '/messages');
-      const data = await res.json();
-      if (data.messages) setChatMessages(data.messages);
-    } catch {}
-    setChatLoading(false);
-  };
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  // Poll for new messages while chat is open
+  useEffect(() => {
+    if (!chatTicket || chatTicket.status === 'closed') {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      return;
+    }
+    const fetchMsgs = () => {
+      authFetch('/api/support-tickets/' + chatTicket.id + '/messages')
+        .then(r => r.json())
+        .then(data => { if (data.messages) setChatMessages(data.messages); })
+        .catch(() => {});
+    };
+    fetchMsgs();
+    pollRef.current = setInterval(fetchMsgs, 5000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [chatTicket]);
 
   const openChat = (ticket: Ticket) => {
     setChatTicket(ticket);
     setChatMessages([]);
-    if (ticket.conversationId) fetchChatMessages(ticket);
-  };
-
-  const sendChatMessage = async () => {
-    if (!chatInput.trim() || !chatTicket || !currentUser) return;
-    const msg = chatInput.trim();
     setChatInput('');
-    let convId = chatTicket.conversationId;
-    try {
-      if (!convId) {
-        const res = await authFetch('/api/conversations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ otherUserId: chatTicket.userId }),
-        });
-        const data = await res.json();
-        convId = data.conversation?.id;
-        if (convId) {
-          await authFetch('/api/support-tickets', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: chatTicket.id, conversationId: convId }),
-          });
-          setChatTicket({ ...chatTicket, conversationId: convId });
-        }
-      }
-      if (convId) {
-        await authFetch('/api/conversations/' + convId + '/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: msg }),
-        });
-        const newMsg: TicketMessage = {
-          id: 'temp-' + Date.now(), senderId: currentUser.id, senderRole: currentUser.role,
-          content: msg, isRead: false, createdAt: new Date().toISOString(),
-          sender: { name: currentUser.name, role: currentUser.role },
-        };
-        setChatMessages(prev => [...prev, newMsg]);
-      }
-    } catch {
-      addToast({ title: 'Error', description: 'Failed to send message', variant: 'destructive' });
-    }
+    setChatLoading(true);
+    authFetch('/api/support-tickets/' + ticket.id + '/messages')
+      .then(r => r.json())
+      .then(data => { if (data.messages) setChatMessages(data.messages); else setChatMessages([]); })
+      .catch(() => setChatMessages([]))
+      .finally(() => setChatLoading(false));
   };
 
   const closeTicket = async (ticketId: string) => {
@@ -130,35 +105,76 @@ export default function TicketsPage() {
     setClosing(null);
   };
 
+  const sendMessage = async () => {
+    if (!chatInput.trim() || !chatTicket || !currentUser) return;
+    const msg = chatInput.trim();
+    setChatInput('');
+    setSendingMsg(true);
+    try {
+      const res = await authFetch('/api/support-tickets/' + chatTicket.id + '/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: msg }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.message) setChatMessages(prev => [...prev, data.message]);
+      }
+    } catch {
+      addToast({ title: 'Error', description: 'Failed to send message', variant: 'destructive' });
+    }
+    setSendingMsg(false);
+  };
+
+  const goBack = () => {
+    setChatTicket(null);
+    setChatMessages([]);
+    setChatInput('');
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    fetchTickets();
+  };
+
   const filtered = filter === 'all' ? tickets : tickets.filter(t => t.status === filter);
   const openCount = tickets.filter(t => t.status === 'open').length;
   const closedCount = tickets.filter(t => t.status === 'closed').length;
 
   if (loading) return <div className="flex items-center justify-center py-16"><div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
 
+  // ========== CHAT VIEW ==========
   if (chatTicket) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => { setChatTicket(null); setChatMessages([]); }}>&larr; Back to Tickets</Button>
+      <div className="flex flex-col space-y-4" style={{ height: 'calc(100vh - 180px)' }}>
+        <div className="flex items-center gap-3 shrink-0">
+          <Button variant="outline" size="sm" onClick={goBack}>
+            <ChevronLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-gray-900">{chatTicket.subject}</h3>
-            <p className="text-xs text-gray-500">from {chatTicket.user?.name || 'User'} ({chatTicket.user?.role || ''})</p>
+            <h3 className="text-sm font-semibold text-gray-900 truncate">{chatTicket.subject}</h3>
+            <p className="text-xs text-gray-500">from {chatTicket.user?.name || 'User'} ({chatTicket.user?.role?.replace('_', ' ') || ''})</p>
           </div>
           {chatTicket.status === 'open' && (
-            <Button size="sm" variant="outline" className="ml-auto text-red-600 border-red-200 hover:bg-red-50" onClick={() => closeTicket(chatTicket.id)} disabled={closing === chatTicket.id}>
+            <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => closeTicket(chatTicket.id)} disabled={closing === chatTicket.id}>
               {closing === chatTicket.id ? 'Closing...' : 'Close Ticket'}
             </Button>
           )}
         </div>
-        <Card className="flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
+        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <CardContent className="flex-1 flex flex-col p-0 min-h-0">
             <ScrollArea className="flex-1 min-h-0">
               <div className="p-4 space-y-3">
+                <div className="flex justify-start">
+                  <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm bg-blue-50 border border-blue-100 text-gray-700">
+                    <p className="text-[10px] font-semibold mb-0.5 text-blue-600">Ticket Description</p>
+                    <p className="whitespace-pre-wrap break-words">{chatTicket.description}</p>
+                    <p className="text-[10px] mt-1 text-gray-400">
+                      {new Date(chatTicket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
                 {chatMessages.length === 0 && !chatLoading && (
-                  <div className="text-center py-8 text-sm text-gray-400">
-                    <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                    <p>No messages yet. Start the conversation.</p>
+                  <div className="text-center py-8">
+                    <MessageCircle className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-xs text-gray-400">No messages yet. Start the conversation.</p>
                   </div>
                 )}
                 {chatMessages.map(m => {
@@ -166,19 +182,36 @@ export default function TicketsPage() {
                   return (
                     <div key={m.id} className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
                       <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5 text-sm', isMe ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-800')}>
-                        {!isMe && <p className="text-[10px] font-semibold text-gray-500 mb-0.5">{m.sender?.name || 'User'}</p>}
+                        {!isMe && <p className="text-[10px] font-semibold mb-0.5 text-gray-500">{chatTicket.user?.name || 'User'}</p>}
                         <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                        <p className={cn('text-[10px] mt-1', isMe ? 'text-green-100' : 'text-gray-400')}>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                        <p className={cn('text-[10px] mt-1', isMe ? 'text-green-100' : 'text-gray-400')}>
+                          {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
                       </div>
                     </div>
                   );
                 })}
-                {chatLoading && <div className="text-center text-xs text-gray-400">Loading messages...</div>}
+                {chatLoading && <div className="text-center text-xs text-gray-400 py-4">Loading messages...</div>}
+                <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
-            <div className="border-t p-3 flex gap-2">
-              <Textarea value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }}} placeholder="Type your reply..." rows={1} className="flex-1 resize-none border-gray-200 text-sm min-h-0" />
-              <Button onClick={sendChatMessage} disabled={!chatInput.trim()} className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90 shrink-0 h-10 w-10 p-0"><Send className="h-4 w-4" /></Button>
+            <div className="border-t p-3 flex gap-2 shrink-0 bg-white">
+              <Textarea
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }}}
+                placeholder="Type your reply..."
+                rows={1}
+                className="flex-1 resize-none border-gray-200 text-sm min-h-0"
+                disabled={chatTicket.status === 'closed'}
+              />
+              <Button
+                onClick={sendMessage}
+                disabled={!chatInput.trim() || sendingMsg || chatTicket.status === 'closed'}
+                className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90 shrink-0 h-10 w-10 p-0"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -186,6 +219,7 @@ export default function TicketsPage() {
     );
   }
 
+  // ========== TICKET LIST VIEW ==========
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
