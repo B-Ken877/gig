@@ -215,7 +215,7 @@ export default function TicketsPage() {
           <p className="text-sm text-gray-500 mt-0.5">Manage and respond to support requests from agents and clients.</p>
         </div>
         <div className="flex gap-2">
-          <Badge variant="secondary" className={cn('cursor-pointer text-xs px-3 py-1', filter === 'all' && 'bg-green-600 text-white')}>All ({tickets.length})</Badge>
+          <Badge variant="secondary" className={cn('cursor-pointer text-xs px-3 py-1', filter === 'all' className={cn('cursor-pointer text-xs px-3 py-1', filter === 'all' && 'bg-green-600 text-white')}className={cn('cursor-pointer text-xs px-3 py-1', filter === 'all' && 'bg-green-600 text-white')} 'bg-green-600 text-white')} onClick={() => setFilter('all')}>All ({tickets.length})</Badge>
           <Badge variant="outline" className={cn('cursor-pointer text-xs px-3 py-1', filter === 'open' && 'bg-green-100 text-green-700 border-green-300')} onClick={() => setFilter('open')}>{openCount} Open</Badge>
           <Badge variant="outline" className={cn('cursor-pointer text-xs px-3 py-1', filter === 'closed' && 'bg-gray-200 text-gray-700')} onClick={() => setFilter('closed')}>{closedCount} Closed</Badge>
         </div>
