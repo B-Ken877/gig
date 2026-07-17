@@ -51,7 +51,26 @@ export async function POST(req: NextRequest) {
         });
       }
     } catch (notifErr) {
-      console.error('[job-posts POST] notification failed:', notifErr);
+      console.error('[job-posts POST] agent notification failed:', notifErr);
+    }
+
+    // Notify all clients about new job post (in-app + push)
+    try {
+      const clients = await db.user.findMany({
+        where: { role: 'client', isActive: true },
+        select: { id: true },
+      });
+      if (clients.length > 0) {
+        await createNotificationBulk(clients.map(c => c.id), {
+          title: 'New Job Posted',
+          message: 'A new job "' + jobTitle + '" at ' + companyName + ' has been posted.',
+          type: 'job_post',
+          pushBody: 'New job posting: ' + jobTitle + ' at ' + companyName,
+          pushUrl: 'https://167.86.124.101:4001/#client-jobs',
+        });
+      }
+    } catch (notifErr) {
+      console.error('[job-posts POST] client notification failed:', notifErr);
     }
 
     return NextResponse.json({ jobPost: { ...post, createdAt: post.createdAt.toISOString() } }, { status: 201 });
