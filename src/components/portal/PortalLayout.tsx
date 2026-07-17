@@ -35,6 +35,7 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
   ],
   payment_taker: [
     { label: 'Payment Requests', page: 'payment-taker-dashboard', icon: DollarSign },
+    { label: 'Tickets', page: 'tickets', icon: ClipboardList },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
   admin: [
@@ -52,7 +53,7 @@ function getPageTitle(page: PageType): string {
     'agent-dashboard': 'Dashboard', 'agent-profile': 'My Profile', 'agent-documents': 'Documents', 'agent-availability': 'Availability', 'agent-applications': 'My Applications',
     'client-dashboard': 'Dashboard', 'client-agents': 'Agent Bank', 'client-needs': 'My Staffing Needs', 'client-jobs': 'Job Postings', 'client-applications': 'Applications', 'client-profile': 'Company Profile',
     'admin-dashboard': 'Admin Dashboard', 'admin-users': 'Users', 'admin-job-posts': 'Job Postings',
-    'payment-taker-dashboard': 'Payment Requests', 'messages': 'Messages', 'pending-payment': 'Complete Payment',
+    'payment-taker-dashboard': 'Payment Requests', 'messages': 'Messages', 'pending-payment': 'Complete Payment', 'support': 'Customer Support', 'tickets': 'Support Tickets',
   };
   return map[page] || 'Dashboard';
 }

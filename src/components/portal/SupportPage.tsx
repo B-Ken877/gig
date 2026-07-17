@@ -1,13 +1,14 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore, authFetch } from '@/lib/store';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Headphones, Plus, MessageCircle, Clock, CheckCircle2, XCircle, Send, ChevronRight } from 'lucide-react';
+import { Headphones, Plus, MessageCircle, Clock, CheckCircle2, XCircle, Send, ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface Ticket {
   id: string;
@@ -21,14 +22,34 @@ interface Ticket {
   user?: { id: string; name: string; role: string };
 }
 
+interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderRole: string;
+  content: string;
+  isRead: boolean;
+  createdAt: string;
+  sender?: { name: string; role: string };
+}
+
+const SUPPORT_AGENT_ID = 'cmrjo435c0001kqp7e69n63f5';
+
 export default function SupportPage() {
-  const { currentUser, addToast, navigateTo } = useAppStore();
+  const { currentUser, addToast } = useAppStore();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Chat state
+  const [chatTicket, setChatTicket] = useState<Ticket | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [sendingMsg, setSendingMsg] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchTickets = useCallback(() => {
     if (!currentUser) return;
@@ -40,6 +61,98 @@ export default function SupportPage() {
   }, [currentUser]);
 
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const fetchChatMessages = async (ticket: Ticket) => {
+    if (!ticket.conversationId) {
+      setChatMessages([]);
+      return;
+    }
+    setChatLoading(true);
+    try {
+      const res = await authFetch('/api/conversations/' + ticket.conversationId + '/messages');
+      const data = await res.json();
+      if (data.messages) setChatMessages(data.messages);
+      else setChatMessages([]);
+    } catch {
+      setChatMessages([]);
+    }
+    setChatLoading(false);
+  };
+
+  const openChat = (ticket: Ticket) => {
+    setChatTicket(ticket);
+    setChatMessages([]);
+    setChatInput('');
+    if (ticket.conversationId) {
+      fetchChatMessages(ticket);
+    }
+  };
+
+  const goBack = () => {
+    setChatTicket(null);
+    setChatMessages([]);
+    setChatInput('');
+    fetchTickets();
+  };
+
+  const sendMessage = async () => {
+    if (!chatInput.trim() || !chatTicket || !currentUser) return;
+    const msg = chatInput.trim();
+    setChatInput('');
+    setSendingMsg(true);
+
+    let convId = chatTicket.conversationId;
+
+    try {
+      // Create conversation if it doesn't exist
+      if (!convId) {
+        const res = await authFetch('/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ otherUserId: SUPPORT_AGENT_ID }),
+        });
+        const data = await res.json();
+        convId = data.conversation?.id;
+        if (convId) {
+          // Link conversation to ticket
+          await authFetch('/api/support-tickets', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: chatTicket.id, conversationId: convId }),
+          });
+          setChatTicket(prev => prev ? { ...prev, conversationId: convId } : null);
+        }
+      }
+
+      if (convId) {
+        const msgRes = await authFetch('/api/conversations/' + convId + '/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: msg }),
+        });
+        if (msgRes.ok) {
+          const newMsg: ChatMessage = {
+            id: 'temp-' + Date.now(),
+            senderId: currentUser.id,
+            senderRole: currentUser.role,
+            content: msg,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+            sender: { name: currentUser.name, role: currentUser.role },
+          };
+          setChatMessages(prev => [...prev, newMsg]);
+        }
+      }
+    } catch {
+      addToast({ title: 'Error', description: 'Failed to send message', variant: 'destructive' });
+    }
+    setSendingMsg(false);
+  };
 
   const handleSubmit = async () => {
     if (!subject.trim() || !description.trim() || submitting) return;
@@ -60,25 +173,95 @@ export default function SupportPage() {
         const d = await res.json();
         addToast({ title: 'Error', description: d.error || 'Failed to create ticket', variant: 'destructive' });
       }
-    } catch { addToast({ title: 'Error', description: 'Network error', variant: 'destructive' }); }
+    } catch {
+      addToast({ title: 'Error', description: 'Network error', variant: 'destructive' });
+    }
     finally { setSubmitting(false); }
   };
 
-  const handleOpenChat = (ticket: Ticket) => {
-    if (ticket.conversationId) {
-      navigateTo('messages' as never);
-    } else {
-      useAppStore.getState().pendingChatUserId = 'cmrjo435c0001kqp7e69n63f5';
-      navigateTo('messages' as never);
-    }
-  };
+  // ========== CHAT VIEW ==========
+  if (chatTicket) {
+    return (
+      <div className="flex flex-col space-y-4" style={{ height: 'calc(100vh - 180px)' }}>
+        <div className="flex items-center gap-3 shrink-0">
+          <Button variant="outline" size="sm" onClick={goBack}>
+            <ChevronLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-gray-900 truncate">{chatTicket.subject}</h3>
+            <div className="flex items-center gap-2">
+              <Badge className={cn('text-[10px] px-1.5 py-0', chatTicket.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
+                {chatTicket.status === 'open' ? 'Open' : 'Closed'}
+              </Badge>
+              <span className="text-xs text-gray-400">Chatting with Support Agent</span>
+            </div>
+          </div>
+        </div>
 
-  const openCount = tickets.filter(t => t.status === 'open').length;
-  const closedCount = tickets.filter(t => t.status === 'closed').length;
+        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <CardContent className="flex-1 flex flex-col p-0 min-h-0">
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="p-4 space-y-3">
+                {chatMessages.length === 0 && !chatLoading && (
+                  <div className="text-center py-12">
+                    <Headphones className="h-10 w-10 mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm text-gray-500">No messages yet. Send a message to start chatting with the support agent.</p>
+                  </div>
+                )}
+                {chatMessages.map(m => {
+                  const isMe = m.senderId === currentUser?.id;
+                  return (
+                    <div key={m.id} className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
+                      <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5 text-sm', isMe ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-800')}>
+                        {!isMe && (
+                          <p className="text-[10px] font-semibold mb-0.5" style={{ color: isMe ? undefined : '#16A34A' }}>
+                            Support Agent
+                          </p>
+                        )}
+                        <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                        <p className={cn('text-[10px] mt-1', isMe ? 'text-green-100' : 'text-gray-400')}>
+                          {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {chatLoading && <div className="text-center text-xs text-gray-400 py-4">Loading messages...</div>}
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
 
+            <div className="border-t p-3 flex gap-2 shrink-0 bg-white">
+              <Textarea
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }}}
+                placeholder="Type your message..."
+                rows={1}
+                className="flex-1 resize-none border-gray-200 text-sm min-h-0"
+                disabled={chatTicket.status === 'closed'}
+              />
+              <Button
+                onClick={sendMessage}
+                disabled={!chatInput.trim() || sendingMsg || chatTicket.status === 'closed'}
+                className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90 shrink-0 h-10 w-10 p-0"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ========== TICKET LIST VIEW ==========
   if (loading) {
     return <div className="flex items-center justify-center py-16"><div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
   }
+
+  const openCount = tickets.filter(t => t.status === 'open').length;
+  const closedCount = tickets.filter(t => t.status === 'closed').length;
 
   return (
     <div className="space-y-6">
@@ -125,7 +308,7 @@ export default function SupportPage() {
             <div className="text-center py-12">
               <Headphones className="h-10 w-10 mx-auto mb-3 text-gray-300" />
               <p className="text-sm text-gray-500">No tickets yet.</p>
-              <p className="text-xs text-gray-400 mt-1">Click "New Ticket" to get help from our support team.</p>
+              <p className="text-xs text-gray-400 mt-1">Click &quot;New Ticket&quot; to get help from our support team.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -144,11 +327,9 @@ export default function SupportPage() {
                         <Clock className="h-3 w-3" />{new Date(ticket.createdAt).toLocaleDateString()} at {new Date(ticket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
-                    {ticket.status === 'open' && (
-                      <Button size="sm" onClick={() => handleOpenChat(ticket)} className="shrink-0 h-8 text-xs bg-green-600 text-white hover:bg-green-700 gap-1">
-                        <MessageCircle className="h-3 w-3" />Chat <ChevronRight className="h-3 w-3" />
-                      </Button>
-                    )}
+                    <Button size="sm" onClick={() => openChat(ticket)} className="shrink-0 h-8 text-xs bg-green-600 text-white hover:bg-green-700 gap-1">
+                      <MessageCircle className="h-3 w-3" />Chat
+                    </Button>
                   </div>
                 </div>
               ))}

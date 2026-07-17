@@ -27,15 +27,15 @@ const VALID_PAGES: ReadonlySet<PageType> = new Set<PageType>([
   'agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications',
   'client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile',
   'admin-dashboard','admin-users','admin-job-posts',
-  'payment-taker-dashboard','messages',
+  'payment-taker-dashboard','messages','support','tickets',
 ]);
 
 // FEATURE: Role-based page access control
 const ROLE_PAGE_MAP: Partial<Record<UserRole, ReadonlySet<PageType>>> = {
-  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications','messages','pending-payment']),
-  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile','messages','pending-payment']),
+  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications','messages','support','pending-payment']),
+  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile','messages','support','pending-payment']),
   admin: new Set(['admin-dashboard','admin-users','admin-job-posts','messages']),
-  payment_taker: new Set(['payment-taker-dashboard','messages']),
+  payment_taker: new Set(['payment-taker-dashboard','messages','tickets','support']),
 };
 
 interface AuthSlice {

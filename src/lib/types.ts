@@ -9,7 +9,8 @@ export type PageType =
   | 'payment-taker-dashboard'
   | 'messages'
   | 'pending-payment'
-  | 'support';
+  | 'support'
+  | 'tickets';
 
 export type UserRole = 'visitor' | 'agent' | 'client' | 'payment_taker' | 'admin';
 
