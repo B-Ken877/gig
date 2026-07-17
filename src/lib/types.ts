@@ -8,7 +8,8 @@ export type PageType =
   | 'admin-dashboard' | 'admin-users' | 'admin-job-posts'
   | 'payment-taker-dashboard'
   | 'messages'
-  | 'pending-payment';
+  | 'pending-payment'
+  | 'support';
 
 export type UserRole = 'visitor' | 'agent' | 'client' | 'payment_taker' | 'admin';
 

@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2 } from 'lucide-react';
+import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavItem { label: string; page: PageType; icon: React.ElementType; }
@@ -20,6 +20,7 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'Documents', page: 'agent-documents', icon: FileText },
     { label: 'Availability', page: 'agent-availability', icon: Calendar },
     { label: 'My Applications', page: 'agent-applications', icon: ClipboardList },
+    { label: 'Customer Support', page: 'support', icon: Headphones },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
   client: [
@@ -29,6 +30,7 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'My Needs', page: 'client-needs', icon: Briefcase },
     { label: 'Agent Bank', page: 'client-agents', icon: Users },
     { label: 'Applications', page: 'client-applications', icon: ClipboardList },
+    { label: 'Customer Support', page: 'support', icon: Headphones },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
   payment_taker: [
@@ -150,7 +152,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               const Icon = item.icon;
               const isActive = currentPage === item.page;
               return (
-                <button key={item.page} onClick={() => navigateTo(item.page)}
+                <button key={item.page} onClick={() => { if (item.page === 'support') { useAppStore.getState().pendingChatUserId = 'cmrjo435c0001kqp7e69n63f5'; navigateTo('messages'); } else { navigateTo(item.page); } }}
                   className={cn('flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors w-full text-left',
                     isActive ? 'text-[#16A34A]' : 'text-gray-300 hover:bg-white/8 hover:text-white')}
                   style={isActive ? { backgroundColor: 'rgba(22,163,74,0.12)', borderLeft: '3px solid #16A34A' } : { borderLeft: '3px solid transparent' }}>

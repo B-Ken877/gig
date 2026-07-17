@@ -15,6 +15,15 @@ interface ClientNeed {
   client: { companyName: string; industry: string | null };
 }
 
+interface JobPost {
+  id: string;
+  jobTitle: string;
+  description: string;
+  companyName: string;
+  companyLink: string | null;
+  createdAt: string;
+}
+
 const POLL_INTERVAL = 15000;
 
 export default function AgentDashboard() {
@@ -22,6 +31,7 @@ export default function AgentDashboard() {
   const [agent, setAgent] = useState<any>(null);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
   const [needs, setNeeds] = useState<ClientNeed[]>([]);
+  const [jobPosts, setJobPosts] = useState<JobPost[]>([]);
   const [needsLoading, setNeedsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,8 +62,12 @@ export default function AgentDashboard() {
         if (!r.ok) return { applications: [] };
         return r.json();
       }),
+      fetch('/api/job-posts', { headers }).then(r => {
+        if (!r.ok) return { jobPosts: [] };
+        return r.json();
+      }),
     ])
-      .then(([agentData, msgData, needsData, interestData]) => {
+      .then(([agentData, msgData, needsData, interestData, postsData]) => {
         if (!isMountedRef.current) return;
         if (agentData.agents) {
           const me = agentData.agents.find((a: any) => a.userId === currentUser.id);
@@ -66,6 +80,7 @@ export default function AgentDashboard() {
         const apps = interestData.applications || [];
         setTotalApplications(apps.length);
         setAppliedIds(new Set(apps.map((a: any) => a.needId).filter(Boolean)));
+        if (postsData.jobPosts) setJobPosts(postsData.jobPosts);
       })
       .catch(err => {
         if (isMountedRef.current) setError(err.message);
@@ -166,7 +181,7 @@ export default function AgentDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Available Jobs</p>
-                <p className="text-2xl font-bold mt-1">{needs.filter(n => !appliedIds.has(n.id)).length}</p>
+                <p className="text-2xl font-bold mt-1">{needs.filter(n => !appliedIds.has(n.id)).length + jobPosts.length}</p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center">
                 <Briefcase className="h-5 w-5 text-blue-600" />
@@ -227,7 +242,7 @@ export default function AgentDashboard() {
             <div className="flex items-center gap-2">
               <Briefcase className="h-5 w-5 text-green-600" />
               <h3 className="text-sm font-semibold">Available Jobs</h3>
-              <Badge variant="secondary" className="text-xs">{needs.filter(n => !appliedIds.has(n.id)).length} open</Badge>
+              <Badge variant="secondary" className="text-xs">{needs.filter(n => !appliedIds.has(n.id)).length + jobPosts.length} open</Badge>
             </div>
           </div>
           {needsLoading ? (
@@ -305,6 +320,45 @@ export default function AgentDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {jobPosts.length > 0 && (
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <Briefcase className="h-5 w-5 text-blue-600" />
+              <h3 className="text-sm font-semibold">Job Postings</h3>
+              <Badge variant="secondary" className="text-xs">{jobPosts.length} posted</Badge>
+            </div>
+            <div className="space-y-3">
+              {jobPosts.map(post => (
+                <div key={post.id} className="border rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-sm font-semibold text-gray-900">{post.jobTitle}</h4>
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <span className="flex items-center gap-1 text-xs text-gray-500">
+                          <Building2 className="h-3 w-3" />{post.companyName}
+                        </span>
+                        <span className="flex items-center gap-1 text-xs text-gray-400">
+                          <Clock className="h-3 w-3" />{new Date(post.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-2 line-clamp-2">{post.description}</p>
+                    </div>
+                    {post.companyLink && (
+                      <a href={post.companyLink} target="_blank" rel="noopener noreferrer">
+                        <Button size="sm" className="bg-blue-600 text-white hover:bg-blue-700 text-xs shrink-0 h-8">
+                          Apply <ArrowRight className="h-3 w-3 ml-1" />
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {agent && (
         <Card>
