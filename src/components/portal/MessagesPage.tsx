@@ -931,7 +931,7 @@ export default function MessagesPage() {
           {/* ── Right Panel: Chat Messages ── */}
           <div
             className={cn(
-              'flex flex-1 flex-col bg-gray-50',
+              'flex flex-1 flex-col bg-gray-50 overflow-hidden',
               !mobileShowChat ? 'hidden lg:flex' : 'flex',
             )}
           >

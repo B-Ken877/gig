@@ -62,8 +62,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const pageTitle = getPageTitle(currentPage);
   const unreadCount = (notifications || []).filter((n) => !n.isRead).length;
   const notifPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dismissedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { if (window.innerWidth < 1024) setSidebarOpen(false); }, [currentPage, setSidebarOpen]);
+
   // Browser push notification subscription
   useEffect(() => {
     if (typeof window === 'undefined' || !currentUser || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
@@ -86,12 +88,18 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   }, [currentUser]);
 
   // Fetch in-app notifications (immediate + poll every 15s)
+  // Dismissed notifications are tracked in dismissedRef and filtered out on each poll
   useEffect(() => {
     if (!currentUser) return;
     const fetchNotifs = () => {
       fetch('/api/notifications?userId=' + currentUser.id)
         .then(r => r.json())
-        .then(data => { if (Array.isArray(data)) useAppStore.getState().setData('notifications', data); })
+        .then(data => {
+          if (Array.isArray(data)) {
+            const filtered = data.filter((n: any) => !dismissedRef.current.has(n.id));
+            useAppStore.getState().setData('notifications', filtered);
+          }
+        })
         .catch(() => {});
     };
     fetchNotifs();
@@ -101,7 +109,11 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   const markSingleRead = useCallback(async (notifId: string) => {
     if (!currentUser) return;
+    // Track as dismissed so polling won't bring it back
+    dismissedRef.current.add(notifId);
+    // Mark as read on server
     fetch('/api/notifications/' + notifId, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role }, body: JSON.stringify({ isRead: true }) }).catch(() => {});
+    // Remove from local store immediately
     const updated = (notifications || []).filter(n => n.id !== notifId);
     useAppStore.getState().setData('notifications', updated);
   }, [currentUser, notifications]);
@@ -110,6 +122,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     if (!currentUser || !notifications) return;
     const unread = notifications.filter(n => !n.isRead);
     for (const n of unread) {
+      dismissedRef.current.add(n.id);
       fetch('/api/notifications/' + n.id, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role }, body: JSON.stringify({ isRead: true }) }).catch(() => {});
     }
     useAppStore.getState().setData('notifications', notifications.map(n => ({ ...n, isRead: true })));
@@ -120,7 +133,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   return (
     <div className="min-h-screen flex bg-gray-50">
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
-      {/* REDESIGN: Brand navy color + green active indicator with left border */}
       <aside className={cn('fixed lg:sticky top-0 left-0 z-50 h-screen w-[280px] text-white flex flex-col transition-transform duration-300', sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0')} style={{ backgroundColor: '#0B1A2E' }}>
         <div className="flex items-center justify-between px-6 py-5">
           <div className="flex items-center gap-2.5">
