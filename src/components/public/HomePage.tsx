@@ -219,7 +219,7 @@ export default function HomePage() {
                 Whether you specialize in customer support, sales, tech support, or chat — there is a company looking for someone exactly like you.
               </p>
               <ul className="mt-6 space-y-3">
-                {['Annual fee of just 2,000 HTG', 'No assessments or screening required', 'Direct contact with hiring call centers', 'Work remotely from your country'].map(t => (
+                {['Annual fee of just 2,000 HTG/year', 'No assessments or screening required', 'Direct contact with hiring call centers', 'Work remotely from your country'].map(t => (
                   <li key={t} className="flex items-center gap-2 text-sm text-gray-700">
                     <CheckCircle2 className="h-4 w-4 text-[#16A34A] shrink-0" />{t}
                   </li>
@@ -251,7 +251,7 @@ export default function HomePage() {
                 Post your staffing needs, share job listings, and message candidates — all from one dashboard.
               </p>
               <ul className="mt-6 space-y-3">
-                {['Browse a curated bank of skilled agents', 'Post job listings with direct apply links', 'Message agents directly through the platform', 'Monthly fee of just 2,000 HTG'].map(t => (
+                {['Browse a curated bank of skilled agents', 'Post job listings with direct apply links', 'Message agents directly through the platform', 'Monthly fee of just 2,000 HTG/month'].map(t => (
                   <li key={t} className="flex items-center gap-2 text-sm text-gray-700">
                     <CheckCircle2 className="h-4 w-4 text-[#16A34A] shrink-0" />{t}
                   </li>

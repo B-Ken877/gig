@@ -161,7 +161,7 @@ export default function ForClientsPage() {
                 <h3 className="text-lg font-semibold">{p.title}</h3>
                 <div className="mt-4">
                   <span className="text-4xl font-bold text-[#16A34A]">{p.price}</span>
-                  <span className="text-gray-500">{p.period}</span>
+                  <span className="text-lg font-semibold text-[#16A34A]">{p.period}</span>
                   {p.usd && <p className="text-xs text-gray-400 mt-1">{p.usd}</p>}
                 </div>
                 <ul className="mt-6 space-y-3">

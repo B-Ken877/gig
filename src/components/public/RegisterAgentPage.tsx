@@ -153,7 +153,7 @@ export default function RegisterAgentPage() {
           <p className="mt-2 text-sm text-gray-400">Create your account to find call center opportunities</p>
           <div className="mt-3 inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-1.5">
             <Shield className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-amber-300 text-sm font-medium">Annual onboarding fee: 2,000 HTG</span>
+            <span className="text-amber-300 text-sm font-medium">Annual onboarding fee: <strong className="text-white">2,000 HTG/year</strong></span>
           </div>
         </div>
 
