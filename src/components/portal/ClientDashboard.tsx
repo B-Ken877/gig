@@ -174,7 +174,7 @@ export default function ClientDashboard() {
             <DollarSign className="h-5 w-5 text-green-600 mt-0.5" />
             <div>
               <h3 className="font-semibold text-green-900">Your Subscription</h3>
-              <p className="text-sm text-green-700 mt-1">Monthly fee: <strong>3,000 HTG</strong></p>
+              <p className="text-sm text-green-700 mt-1">Monthly fee: <strong>2,000 HTG</strong></p>
               <p className="text-xs text-green-600 mt-1">Your account is active and in good standing.</p>
             </div>
           </div>

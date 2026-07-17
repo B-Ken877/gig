@@ -72,7 +72,7 @@ const SERVICES = [
 
 const WHY_US = [
   { icon: Zap, title: 'No Middleman', description: 'Connect directly with agents or call centers. No recruiter delays, no placement fees.' },
-  { icon: CheckCircle2, title: 'Transparent Pricing', description: 'Simple flat fees: 2,000 HTG/year for agents, 3,000 HTG/month for call centers. No hidden costs.' },
+  { icon: CheckCircle2, title: 'Transparent Pricing', description: 'Simple flat fees: 2,000 HTG/year for agents, 2,000 HTG/month for call centers. No hidden costs.' },
   { icon: Headphones, title: 'Diverse Talent Pool', description: 'Agents from Haiti, Jamaica, Trinidad, Nigeria, the Dominican Republic, and across the Caribbean.' },
   { icon: ArrowRight, title: 'Direct Hiring', description: 'You handle the hiring, training, and management. We just make the introduction.' },
 ];

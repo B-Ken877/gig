@@ -27,7 +27,7 @@ export default function PendingPaymentPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const feeAmount = currentUser?.role === 'client'
-    ? '3,000 HTG / month'
+    ? '2,000 HTG / month'
     : '2,000 HTG / year';
   const roleLabel = currentUser?.role === 'client' ? 'Call Center' : 'Agent';
 

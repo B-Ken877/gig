@@ -23,7 +23,7 @@ const FEATURES = [
 const PRICING = [
   {
     title: 'Call Center Plan',
-    price: '3,000 HTG',
+    price: '2,000 HTG',
     period: '/month',
     features: [
       'Access to the full agent bank',
@@ -55,7 +55,7 @@ const PRICING = [
 ];
 
 const STEPS = [
-  { step: '1', title: 'Register & Pay', desc: 'Create your call center account and complete the monthly fee of 3,000 HTG via our payment team.' },
+  { step: '1', title: 'Register & Pay', desc: 'Create your call center account and complete the monthly fee of 2,000 HTG via our payment team.' },
   { step: '2', title: 'Set Up Your Profile', desc: 'Add your company name, industry, and link. Then start posting needs and browsing agents.' },
   { step: '3', title: 'Find & Connect', desc: 'Use the agent bank to find candidates. Message them directly, discuss the role, and hire.' },
   { step: '4', title: 'Manage & Grow', desc: 'Post job listings, update your staffing needs, and keep building your remote team.' },
