@@ -29,6 +29,7 @@ import AdminDashboard from '@/components/portal/AdminDashboard';
 import AdminUsers from '@/components/portal/AdminUsers';
 import AdminJobPosts from '@/components/portal/AdminJobPosts';
 import PaymentTakerDashboard from '@/components/portal/PaymentTakerDashboard';
+import SupportPage from '@/components/portal/SupportPage';
 import PendingPaymentPage from '@/components/portal/PendingPaymentPage';
 import MessagesPage from '@/components/portal/MessagesPage';
 import { Toaster } from '@/components/ui/sonner';
@@ -178,6 +179,7 @@ export default function Home() {
             {currentPage === 'admin-job-posts' && <AdminJobPosts />}
             {currentPage === 'payment-taker-dashboard' && <PaymentTakerDashboard />}
             {currentPage === 'messages' && <MessagesPage />}
+            {currentPage === 'support' && <SupportPage />}
           </PortalLayout>
         </>
       );

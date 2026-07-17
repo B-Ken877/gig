@@ -152,7 +152,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               const Icon = item.icon;
               const isActive = currentPage === item.page;
               return (
-                <button key={item.page} onClick={() => { if (item.page === 'support') { useAppStore.getState().pendingChatUserId = 'cmrjo435c0001kqp7e69n63f5'; navigateTo('messages'); } else { navigateTo(item.page); } }}
+                <button key={item.page} onClick={() => navigateTo(item.page)}
                   className={cn('flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors w-full text-left',
                     isActive ? 'text-[#16A34A]' : 'text-gray-300 hover:bg-white/8 hover:text-white')}
                   style={isActive ? { backgroundColor: 'rgba(22,163,74,0.12)', borderLeft: '3px solid #16A34A' } : { borderLeft: '3px solid transparent' }}>
