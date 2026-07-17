@@ -983,7 +983,7 @@ export default function MessagesPage() {
                 </div>
 
                 {/* ── Messages Area ── */}
-                <ScrollArea className="flex-1 px-4 py-4">
+                <ScrollArea className="flex-1 min-h-0 px-4 py-4">
                   {messagesLoading ? (
                     <MessageListSkeleton />
                   ) : messages.length === 0 ? (

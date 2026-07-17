@@ -6,8 +6,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId');
 
+    const unreadOnly = searchParams.get('unread') !== 'false';
     const where: Record<string, unknown> = {};
     if (userId) where.userId = userId;
+    if (unreadOnly) where.isRead = false;
 
     const notifications = await db.notification.findMany({
       where: Object.keys(where).length > 0 ? where : undefined,
