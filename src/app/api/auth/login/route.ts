@@ -8,7 +8,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
     }
 
-    const user = await db.user.findUnique({ where: { email } });
+    // Normalize the email: trim whitespace + lowercase. SQLite's findUnique
+    // is case-sensitive on email, so without this, users who type
+    // "Payments@..." or "PAYMENTS@..." get "Invalid credentials" even with
+    // the correct password. This is the most common cause of "my credentials
+    // don't work" reports.
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const user = await db.user.findUnique({ where: { email: normalizedEmail } });
     if (!user) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
