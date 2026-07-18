@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useAppStore } from '@/lib/store';
+import React, { useEffect, useRef, useState } from 'react';
+import { useAppStore, authFetch } from '@/lib/store';
 import type { Agent } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,8 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, X, Save, Loader2 } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Plus, X, Save, Loader2, Camera, CheckCircle2 } from 'lucide-react';
 
 const COUNTRIES = [
   'Haiti', 'Dominican Republic', 'Jamaica', 'Trinidad and Tobago',
@@ -32,16 +33,19 @@ const INTERNET_OPTIONS = ['5Mbps', '10Mbps', '25Mbps', '50Mbps+'];
 const SHIFT_OPTIONS = ['Morning', 'Afternoon', 'Night', 'Flexible'];
 
 export default function AgentProfile() {
-  const { currentUser, addToast } = useAppStore();
+  const { currentUser, addToast, updateCurrentUser } = useAppStore();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Form state
+  // Form state — Personal
   const [phone, setPhone] = useState('');
   const [country, setCountry] = useState('');
   const [address, setAddress] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  // Professional
   const [languages, setLanguages] = useState<string[]>([]);
   const [langInput, setLangInput] = useState('');
   const [experience, setExperience] = useState(0);
@@ -51,6 +55,7 @@ export default function AgentProfile() {
   const [employerInput, setEmployerInput] = useState('');
   const [education, setEducation] = useState<string[]>([]);
   const [eduInput, setEduInput] = useState('');
+  // Technical
   const [computerSpecs, setComputerSpecs] = useState('');
   const [ram, setRam] = useState('');
   const [processor, setProcessor] = useState('');
@@ -61,46 +66,103 @@ export default function AgentProfile() {
   const [preferredShift, setPreferredShift] = useState('');
   const [salaryExpectation, setSalaryExpectation] = useState('');
 
+  // Local avatar preview — mirrors currentUser.avatar but updates immediately after upload
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
   useEffect(() => {
     if (!currentUser) return;
+    setAvatarUrl(currentUser.avatar || null);
     fetch(`/api/agents?userId=${currentUser.id}`)
       .then((r) => r.json())
       .then((data) => {
         const a = Array.isArray(data) ? data[0] : data;
         if (a) {
           setAgent(a);
-          // Populate form
+          // Populate form — be defensive: the API returns parsed arrays/objects,
+          // but if a future change returns JSON strings we still handle them.
           setPhone(a.user?.phone || '');
           setCountry(a.country || '');
           setAddress(a.address || '');
-          setDateOfBirth(a.dateOfBirth ? a.dateOfBirth.split('T')[0] : '');
-          setLanguages(Array.isArray(a.languages) ? a.languages : []);
+          setDateOfBirth(a.dateOfBirth ? String(a.dateOfBirth).split('T')[0] : '');
+          setLanguages(Array.isArray(a.languages) ? a.languages : (typeof a.languages === 'string' ? safeParse(a.languages, []) : []));
           setExperience(a.experience || 0);
-          setSkills(Array.isArray(a.skills) ? a.skills : []);
-          setPreviousEmployers(Array.isArray(a.previousEmployers) ? a.previousEmployers : []);
-          setEducation(Array.isArray(a.education) ? a.education : []);
-          setComputerSpecs(typeof a.computerSpecs === 'object' ? JSON.stringify(a.computerSpecs) : (a.computerSpecs || ''));
+          setSkills(Array.isArray(a.skills) ? a.skills : (typeof a.skills === 'string' ? safeParse(a.skills, []) : []));
+          setPreviousEmployers(Array.isArray(a.previousEmployers) ? a.previousEmployers : (typeof a.previousEmployers === 'string' ? safeParse(a.previousEmployers, []) : []));
+          setEducation(Array.isArray(a.education) ? a.education : (typeof a.education === 'string' ? safeParse(a.education, []) : []));
+          setComputerSpecs(typeof a.computerSpecs === 'object' && a.computerSpecs !== null ? JSON.stringify(a.computerSpecs) : (a.computerSpecs || ''));
           setRam(a.ram || '');
           setProcessor(a.processor || '');
           setInternetSpeed(a.internetSpeed || '');
-          setBackupInternet(a.backupInternet || false);
-          setHeadsetAvailable(a.headsetAvailable || false);
-          setUpsAvailable(a.upsAvailable || false);
+          setBackupInternet(Boolean(a.backupInternet));
+          setHeadsetAvailable(Boolean(a.headsetAvailable));
+          setUpsAvailable(Boolean(a.upsAvailable));
           setPreferredShift(a.preferredShift || '');
           setSalaryExpectation(a.salaryExpectation ? String(a.salaryExpectation) : '');
         }
       })
       .catch(() => {
-        addToast({ title: 'Error loading profile', variant: 'destructive' });
+        addToast({ title: 'Error loading profile', description: 'Could not load your saved information.', variant: 'destructive' });
       })
       .finally(() => setLoading(false));
   }, [currentUser, addToast]);
 
-  const savePersonal = async () => {
+  function safeParse<T>(raw: string, fallback: T): T {
+    try { const v = JSON.parse(raw); return (Array.isArray(v) ? v : fallback) as T; } catch { return fallback; }
+  }
+
+  // ─── Avatar upload ──────────────────────────────────────────────────────
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!currentUser) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      addToast({ title: 'Invalid file', description: 'Please choose an image file (JPG, PNG, WebP, GIF).', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      addToast({ title: 'Image too large', description: 'Maximum file size is 8 MB.', variant: 'destructive' });
+      return;
+    }
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/users/avatar', {
+        method: 'POST',
+        headers: {
+          'X-User-Id': currentUser.id,
+          'X-User-Role': currentUser.role,
+        },
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Upload failed');
+      }
+      const data = await res.json();
+      // Bust cache by appending a timestamp query param
+      const bustUrl = data.avatar + '?t=' + Date.now();
+      setAvatarUrl(bustUrl);
+      updateCurrentUser({ avatar: bustUrl });
+      addToast({ title: 'Profile picture updated!', description: 'Your new photo is now visible across the platform.', variant: 'success' });
+    } catch (err) {
+      addToast({ title: 'Upload failed', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
+    } finally {
+      setUploadingAvatar(false);
+      // Reset input so the same file can be picked again if needed
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // ─── Unified save ──────────────────────────────────────────────────────
+  // All three save buttons call this. It sends the FULL form state in a single
+  // PATCH so nothing gets dropped. Phone is saved on the User model separately
+  // (it lives there in the schema).
+  const saveAll = async (scope: 'personal' | 'professional' | 'technical') => {
     if (!agent || !currentUser) return;
     setSaving(true);
     try {
-      // Update phone on User model
+      // 1) Update phone on User model (if changed)
       if (phone !== (agent.user?.phone || '')) {
         await fetch('/api/users/phone', {
           method: 'PUT',
@@ -108,7 +170,8 @@ export default function AgentProfile() {
           body: JSON.stringify({ phone }),
         }).catch(() => {});
       }
-      // Update agent fields
+
+      // 2) Update ALL agent fields in one PATCH
       const res = await fetch(`/api/agents/${agent.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
@@ -116,53 +179,11 @@ export default function AgentProfile() {
           country,
           address,
           dateOfBirth: dateOfBirth || null,
-        }),
-      });
-      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Save failed'); }
-      const updated = await res.json();
-      setAgent(prev => prev ? { ...prev, ...updated, user: { ...prev.user, phone } } : prev);
-      addToast({ title: 'Personal info updated!', description: 'Your changes have been saved.', variant: 'success' });
-    } catch (err) {
-      addToast({ title: 'Failed to save', description: err.message || 'Please try again.', variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveProfessional = async () => {
-    if (!agent || !currentUser) return;
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/agents/${agent.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
-        body: JSON.stringify({
           languages,
           experience,
           skills,
           previousEmployers,
           education,
-        }),
-      });
-      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Save failed'); }
-      const updated = await res.json();
-      setAgent(prev => prev ? { ...prev, ...updated } : prev);
-      addToast({ title: 'Professional info updated!', description: 'Your skills and experience have been saved.', variant: 'success' });
-    } catch (err) {
-      addToast({ title: 'Failed to save', description: err.message || 'Please try again.', variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveTechnical = async () => {
-    if (!agent || !currentUser) return;
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/agents/${agent.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
-        body: JSON.stringify({
           computerSpecs,
           ram,
           processor,
@@ -176,10 +197,22 @@ export default function AgentProfile() {
       });
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Save failed'); }
       const updated = await res.json();
-      setAgent(prev => prev ? { ...prev, ...updated } : prev);
-      addToast({ title: 'Technical info updated!', description: 'Your equipment details have been saved.', variant: 'success' });
+
+      // Merge updated agent + new phone into local state
+      setAgent(prev => prev ? { ...prev, ...updated, user: { ...prev.user, ...updated.user, phone } } : prev);
+
+      const labels = {
+        personal: 'Personal info',
+        professional: 'Professional info',
+        technical: 'Technical info',
+      } as const;
+      addToast({
+        title: labels[scope] + ' saved!',
+        description: 'All your changes have been updated and will appear in the agent bank.',
+        variant: 'success',
+      });
     } catch (err) {
-      addToast({ title: 'Failed to save', description: err.message || 'Please try again.', variant: 'destructive' });
+      addToast({ title: 'Failed to save', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -206,12 +239,60 @@ export default function AgentProfile() {
     );
   }
 
+  const displayName = currentUser?.name || 'Agent';
+  const initials = displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-900">My Profile</h2>
         <p className="text-sm text-gray-500 mt-1">Manage your personal, professional, and technical information.</p>
       </div>
+
+      {/* Avatar card */}
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-6 flex flex-col sm:flex-row items-center sm:items-start gap-5">
+          <div className="relative">
+            <Avatar className="h-24 w-24 border-2 border-gray-200">
+              {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} />}
+              <AvatarFallback className="bg-[#16A34A] text-white text-2xl font-bold">{initials}</AvatarFallback>
+            </Avatar>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingAvatar}
+              className="absolute -bottom-1 -right-1 h-9 w-9 rounded-full bg-[#0B1A2E] text-white flex items-center justify-center shadow-lg hover:bg-[#0B1A2E]/90 disabled:opacity-50"
+              title="Upload profile picture"
+            >
+              {uploadingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
+          </div>
+          <div className="flex-1 text-center sm:text-left">
+            <h3 className="text-lg font-semibold text-gray-900">{displayName}</h3>
+            <p className="text-sm text-gray-500">{currentUser?.email}</p>
+            <p className="text-xs text-gray-400 mt-1">
+              Upload a profile picture from your device. It will be shown in chats, the agent bank, and your applications.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 gap-2"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingAvatar}
+            >
+              {uploadingAvatar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+              {uploadingAvatar ? 'Uploading...' : 'Change Picture'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="personal" className="w-full">
         <TabsList>
@@ -278,7 +359,7 @@ export default function AgentProfile() {
                 </div>
               </div>
               <div className="flex justify-end pt-2">
-                <Button onClick={savePersonal} disabled={saving} className="gap-2">
+                <Button onClick={() => saveAll('personal')} disabled={saving} className="gap-2">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save Personal Info
                 </Button>
@@ -464,7 +545,7 @@ export default function AgentProfile() {
               </div>
 
               <div className="flex justify-end pt-2">
-                <Button onClick={saveProfessional} disabled={saving} className="gap-2">
+                <Button onClick={() => saveAll('professional')} disabled={saving} className="gap-2">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save Professional Info
                 </Button>
@@ -577,7 +658,7 @@ export default function AgentProfile() {
               </div>
 
               <div className="flex justify-end pt-2">
-                <Button onClick={saveTechnical} disabled={saving} className="gap-2">
+                <Button onClick={() => saveAll('technical')} disabled={saving} className="gap-2">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save Technical Info
                 </Button>
@@ -586,6 +667,12 @@ export default function AgentProfile() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Reassurance banner */}
+      <div className="flex items-start gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+        <CheckCircle2 className="h-4 w-4 text-[#16A34A] mt-0.5 shrink-0" />
+        <p>Each save button updates <strong>all</strong> your profile fields, not just the ones on the current tab. You will see a confirmation toast at the top of the screen when your changes are saved.</p>
+      </div>
     </div>
   );
 }

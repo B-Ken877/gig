@@ -4,6 +4,7 @@ import { User, FileText, Calendar, MessageCircle, ArrowRight, AlertCircle, Refre
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAppStore } from '@/lib/store';
 
 interface ClientNeed {
@@ -12,7 +13,13 @@ interface ClientNeed {
   description: string;
   requirements: string[];
   createdAt: string;
-  client: { companyName: string; industry: string | null };
+  client: {
+    id?: string;
+    companyName: string;
+    industry: string | null;
+    companyLink?: string | null;
+    user?: { id?: string; avatar?: string | null };
+  };
 }
 
 const POLL_INTERVAL = 15000;
@@ -243,6 +250,10 @@ export default function AgentDashboard() {
                         </div>
                         <div className="flex items-center gap-3 mt-1.5">
                           <span className="flex items-center gap-1 text-xs text-gray-500">
+                            <Avatar className="h-4 w-4">
+                              {need.client?.user?.avatar && <AvatarImage src={need.client.user.avatar} alt={need.client?.companyName || 'Call Center'} />}
+                              <AvatarFallback className="bg-[#0B1A2E] text-white text-[8px] font-bold">{(need.client?.companyName || 'CC').slice(0, 2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
                             <Building2 className="h-3 w-3" />{need.client?.companyName || 'Call Center'}
                           </span>
                           {need.client?.industry && (

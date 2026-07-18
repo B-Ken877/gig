@@ -15,11 +15,27 @@ export async function GET(req: NextRequest) {
     if (role) where.role = role;
 
     const users = await db.user.findMany({
-      where, select: { id: true, email: true, name: true, role: true, phone: true, avatar: true, isActive: true, accountStatus: true, createdAt: true },
+      where,
+      select: {
+        id: true, email: true, name: true, role: true, phone: true,
+        avatar: true, isActive: true, accountStatus: true, createdAt: true,
+        // Bring the client's companyName through the relation so the admin table
+        // can show "TechCall Inc" instead of the contact person's personal name.
+        client: { select: { companyName: true, industry: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json({ users: users.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })) });
+    return NextResponse.json({
+      users: users.map(u => ({
+        id: u.id, email: u.email, name: u.name, role: u.role, phone: u.phone,
+        avatar: u.avatar, isActive: u.isActive, accountStatus: u.accountStatus,
+        createdAt: u.createdAt.toISOString(),
+        // Flatten for the client
+        companyName: u.client?.companyName || null,
+        industry: u.client?.industry || null,
+      })),
+    });
   } catch (error) {
     console.error('GET /api/users error:', error);
     return NextResponse.json({ error: 'Failed' }, { status: 500 });

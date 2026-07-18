@@ -5,11 +5,24 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAppStore } from '@/lib/store';
+
+interface AdminUserRow {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  accountStatus: string;
+  isActive: boolean;
+  avatar?: string | null;
+  createdAt: string;
+  companyName?: string | null;
+}
 
 export default function AdminUsers() {
   const { currentUser, addToast } = useAppStore();
-  const [users, setUsers] = useState<Array<{id:string;name:string;email:string;role:string;accountStatus:string;isActive:boolean;createdAt:string}>>([]);
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [filter, setFilter] = useState('');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -48,7 +61,15 @@ export default function AdminUsers() {
   const roleColors: Record<string, string> = { agent: 'bg-blue-100 text-blue-800', client: 'bg-purple-100 text-purple-800', payment_taker: 'bg-amber-100 text-amber-800', admin: 'bg-red-100 text-red-800', recruiter: 'bg-gray-100 text-gray-800' };
   const statusColors: Record<string, string> = { active: 'bg-green-100 text-green-800', pending_approval: 'bg-amber-100 text-amber-800', rejected: 'bg-red-100 text-red-800', suspended: 'bg-gray-100 text-gray-800' };
 
-  const filtered = search ? users.filter(u => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())) : users;
+  // For client users, we display the company name (not their personal name).
+  // The /api/users endpoint includes companyName for clients.
+  const getDisplayName = (u: AdminUserRow) => u.role === 'client' && u.companyName ? u.companyName : u.name;
+  const getInitials = (name: string) => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+
+  const filtered = search ? users.filter(u => {
+    const dn = getDisplayName(u).toLowerCase();
+    return dn.includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
+  }) : users;
 
   return (
     <div className="space-y-6">
@@ -83,9 +104,24 @@ export default function AdminUsers() {
             <th className="px-4 py-3 text-left font-medium text-gray-500">Actions</th>
           </tr></thead>
           <tbody>
-            {filtered.map(u => (
+            {filtered.map(u => {
+              const dn = getDisplayName(u);
+              return (
               <tr key={u.id} className="border-b last:border-0 hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium">{u.name}</td>
+                <td className="px-4 py-3 font-medium">
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-7 w-7">
+                      {u.avatar && <AvatarImage src={u.avatar} alt={dn} />}
+                      <AvatarFallback className="bg-gray-200 text-gray-700 text-[10px] font-bold">{getInitials(dn)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <div className="truncate">{dn}</div>
+                      {u.role === 'client' && u.companyName && u.name !== u.companyName && (
+                        <div className="text-[10px] text-gray-400 truncate">Contact: {u.name}</div>
+                      )}
+                    </div>
+                  </div>
+                </td>
                 <td className="px-4 py-3 text-gray-500">{u.email}</td>
                 <td className="px-4 py-3"><span className={"px-2 py-1 rounded-full text-xs font-medium " + (roleColors[u.role] || '')}>{u.role.replace('_', ' ')}</span></td>
                 <td className="px-4 py-3"><span className={"px-2 py-1 rounded-full text-xs font-medium " + (statusColors[u.accountStatus] || '')}>{u.accountStatus.replace('_', ' ')}</span></td>
@@ -105,7 +141,8 @@ export default function AdminUsers() {
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {filtered.length === 0 && (<tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400"><Users className="h-10 w-10 mx-auto mb-2 opacity-30" />No users found</td></tr>)}
           </tbody>
         </table></div></CardContent></Card>

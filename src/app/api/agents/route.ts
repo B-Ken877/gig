@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuth } from '@/lib/auth-middleware';
 
+// Safe JSON parse — returns the raw string if it can't be parsed as JSON.
+// The Agent.computerSpecs column is typed as String in the schema (default "{}"),
+// but the profile form lets the user type free text (e.g. "Dell Latitude, i7"),
+// which is not valid JSON. We must not crash the GET endpoint on such values.
+function safeJson<T>(raw: string | null | undefined, fallback: T): T {
+  if (raw === null || raw === undefined || raw === '') return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed as T;
+  } catch {
+    return (typeof fallback === 'string' ? raw as unknown as T : fallback);
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -16,7 +30,7 @@ export async function GET(req: NextRequest) {
         include: { user: { select: { id: true, name: true, email: true, role: true, phone: true, avatar: true, accountStatus: true } }, documents: true, availabilitySlots: true },
       });
       if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-      return NextResponse.json({ agent: { ...agent, languages: JSON.parse(agent.languages || '[]'), skills: JSON.parse(agent.skills || '[]'), education: JSON.parse(agent.education || '[]'), previousEmployers: JSON.parse(agent.previousEmployers || '[]'), computerSpecs: JSON.parse(agent.computerSpecs || '{}') } });
+      return NextResponse.json({ agent: { ...agent, languages: safeJson<string[]>(agent.languages, []), skills: safeJson<string[]>(agent.skills, []), education: safeJson<string[]>(agent.education, []), previousEmployers: safeJson<string[]>(agent.previousEmployers, []), computerSpecs: safeJson<string>(agent.computerSpecs, '') } });
     }
 
     if (userId) {
@@ -25,7 +39,7 @@ export async function GET(req: NextRequest) {
         include: { user: { select: { id: true, name: true, email: true, role: true, phone: true, avatar: true, accountStatus: true } }, documents: true, availabilitySlots: true },
       });
       if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-      return NextResponse.json({ ...agent, languages: JSON.parse(agent.languages || '[]'), skills: JSON.parse(agent.skills || '[]'), education: JSON.parse(agent.education || '[]'), previousEmployers: JSON.parse(agent.previousEmployers || '[]'), computerSpecs: JSON.parse(agent.computerSpecs || '{}'), dateOfBirth: agent.dateOfBirth?.toISOString() || null, createdAt: agent.createdAt.toISOString(), updatedAt: agent.updatedAt.toISOString() });
+      return NextResponse.json({ ...agent, languages: safeJson<string[]>(agent.languages, []), skills: safeJson<string[]>(agent.skills, []), education: safeJson<string[]>(agent.education, []), previousEmployers: safeJson<string[]>(agent.previousEmployers, []), computerSpecs: safeJson<string>(agent.computerSpecs, ''), dateOfBirth: agent.dateOfBirth?.toISOString() || null, createdAt: agent.createdAt.toISOString(), updatedAt: agent.updatedAt.toISOString() });
     }
 
     const where: Record<string, unknown> = {};
@@ -41,10 +55,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ agents: agents.map(a => ({
       ...a,
-      languages: JSON.parse(a.languages || '[]'),
-      skills: JSON.parse(a.skills || '[]'),
-      education: JSON.parse(a.education || '[]'),
-      previousEmployers: JSON.parse(a.previousEmployers || '[]'),
+      languages: safeJson<string[]>(a.languages, []),
+      skills: safeJson<string[]>(a.skills, []),
+      education: safeJson<string[]>(a.education, []),
+      previousEmployers: safeJson<string[]>(a.previousEmployers, []),
     })) });
   } catch (error) {
     console.error('GET /api/agents error:', error);

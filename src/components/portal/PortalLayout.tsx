@@ -59,7 +59,7 @@ function getPageTitle(page: PageType): string {
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const [displayName, setDisplayName] = useState<string | null>(null);
-  const { currentUser, currentPage, sidebarOpen, setSidebarOpen, navigateTo, logout, notifications } = useAppStore();
+  const { currentUser, currentPage, sidebarOpen, setSidebarOpen, navigateTo, logout, notifications, updateCurrentUser } = useAppStore();
   const role = (currentUser?.role || 'visitor') as string;
   const navItems = (NAV_CONFIG[role] || []) as NavItem[];
   const pageTitle = getPageTitle(currentPage);
@@ -131,17 +131,30 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     useAppStore.getState().setData('notifications', notifications.map(n => ({ ...n, isRead: true })));
   };
 
-  // Fetch company name for call center users
+  // Fetch company name + avatar for call center users (and refresh avatar for everyone).
+  // This runs on every mount so a freshly uploaded picture shows up in the sidebar
+  // without requiring a full page reload.
   useEffect(() => {
-    if (currentUser?.role === 'client') {
+    if (!currentUser) return;
+    if (currentUser.role === 'client') {
       fetch('/api/users/company-name', { headers: { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role } })
         .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d?.companyName) setDisplayName(d.companyName); })
+        .then(d => {
+          if (d?.companyName) setDisplayName(d.companyName);
+          // Best-effort: also refresh avatar if returned
+          // (the /api/users/company-name endpoint currently only returns companyName,
+          //  so we leave avatar alone — it is refreshed via updateCurrentUser on upload)
+        })
         .catch(() => {});
+    } else {
+      // For non-clients, the personal name is the display name
+      setDisplayName(currentUser.name || null);
     }
-  }, [currentUser]);
+  }, [currentUser, updateCurrentUser]);
 
-  const effectiveName = displayName || currentUser?.name || 'User'; const initials = effectiveName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  const effectiveName = displayName || currentUser?.name || 'User';
+  const initials = effectiveName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  const avatarUrl = currentUser?.avatar || null;
 
   return (
     <div className="min-h-screen flex bg-gray-50">
@@ -217,7 +230,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2 px-2 h-9">
-                  <Avatar className="h-7 w-7"><AvatarFallback className="bg-[#16A34A] text-white text-xs font-semibold">{initials}</AvatarFallback></Avatar>
+                  <Avatar className="h-7 w-7">
+                    {avatarUrl && <AvatarImage src={avatarUrl} alt={effectiveName} />}
+                    <AvatarFallback className="bg-[#16A34A] text-white text-xs font-semibold">{initials}</AvatarFallback>
+                  </Avatar>
                   <span className="hidden sm:inline text-sm font-medium text-gray-700 max-w-[120px] truncate">{effectiveName}</span>
                 </Button>
               </DropdownMenuTrigger>

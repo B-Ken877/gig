@@ -50,6 +50,8 @@ interface AuthSlice {
     clientProfile?: Record<string, unknown>;
   }) => Promise<{ message?: string; requiresApproval?: boolean; userId?: string }>;
   logout: () => void;
+  // Patch the current user object in-store (e.g., after avatar upload, profile save).
+  updateCurrentUser: (patch: Partial<User>) => void;
 }
 
 const createAuthSlice = (
@@ -77,6 +79,11 @@ const createAuthSlice = (
     } catch (error) { set(() => ({ isLoading: false })); throw error; }
   },
   logout: () => { set(() => ({ currentUser: null, isAuthenticated: false, currentPage: 'home' as PageType, previousPages: [] })); },
+  updateCurrentUser: (patch) => {
+    set((state) => ({
+      currentUser: state.currentUser ? { ...state.currentUser, ...patch } : null,
+    }));
+  },
 });
 
 interface NavSlice {

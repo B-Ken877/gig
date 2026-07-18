@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Menu, X, LogOut, LayoutDashboard, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
 } from '@/components/ui/sheet';
@@ -34,6 +35,26 @@ const ROLE_DASHBOARD: Partial<Record<UserRole, PageType>> = {
 export default function PublicNavbar() {
   const { currentPage, navigateTo, isAuthenticated, currentUser, logout } = useAppStore();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // For client (call center) users we display the company name, not their personal name.
+  const [companyName, setCompanyName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isAuthenticated && currentUser?.role === 'client') {
+      fetch('/api/users/company-name', {
+        headers: { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.companyName) setCompanyName(d.companyName); else setCompanyName(null); })
+        .catch(() => setCompanyName(null));
+    } else {
+      setCompanyName(null);
+    }
+  }, [isAuthenticated, currentUser]);
+
+  // The name to show in the navbar.
+  const displayName = (currentUser?.role === 'client' && companyName) ? companyName : (currentUser?.name || '');
+  const initials = displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+  const avatarUrl = currentUser?.avatar || null;
 
   const handleNav = (page: PageType) => {
     navigateTo(page);
@@ -83,16 +104,17 @@ export default function PublicNavbar() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2 text-white/80 hover:text-white hover:bg-white/10">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full green-gradient text-xs font-bold text-[#0B1A2E]">
-                    {currentUser.name.charAt(0).toUpperCase()}
-                  </div>
-                  <span className="max-w-[120px] truncate text-sm">{currentUser.name}</span>
+                  <Avatar className="h-7 w-7">
+                    {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} />}
+                    <AvatarFallback className="bg-[#16A34A] text-[#0B1A2E] text-xs font-bold">{initials}</AvatarFallback>
+                  </Avatar>
+                  <span className="max-w-[120px] truncate text-sm">{displayName}</span>
                   <ChevronDown className="size-3.5 opacity-60" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <div className="px-2 py-1.5">
-                  <p className="text-sm font-medium">{currentUser.name}</p>
+                  <p className="text-sm font-medium">{displayName}</p>
                   <p className="text-xs text-muted-foreground">{currentUser.email}</p>
                   <p className="mt-1 text-xs font-medium capitalize" style={{ color: '#16A34A' }}>{currentUser.role.replace('_', ' ')}</p>
                 </div>

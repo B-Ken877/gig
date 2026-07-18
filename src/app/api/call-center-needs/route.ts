@@ -22,7 +22,19 @@ export async function GET(req: NextRequest) {
   try {
     const needs = await db.callCenterNeed.findMany({
       where: { isActive: true },
-      include: { client: { select: { companyName: true, industry: true } } },
+      // Include the client's user.avatar so agents see the call center's
+      // profile picture alongside the need.
+      include: {
+        client: {
+          select: {
+            id: true,
+            companyName: true,
+            industry: true,
+            companyLink: true,
+            user: { select: { id: true, avatar: true } },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
     return NextResponse.json({
@@ -111,4 +123,3 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }
-

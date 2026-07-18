@@ -88,6 +88,10 @@ interface SearchableUser {
   role: string;
   email: string;
   avatar?: string | null;
+  // For client users, the call center name to display (instead of personal name).
+  companyName?: string | null;
+  industry?: string | null;
+  displayName?: string | null;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -305,9 +309,11 @@ function NewConversationDialog({
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
-        (u) =>
-          u.name.toLowerCase().includes(q) ||
-          u.email.toLowerCase().includes(q),
+        (u) => {
+          // Search against the display name (company name for clients) and email
+          const dn = (u.displayName || u.name || '').toLowerCase();
+          return dn.includes(q) || u.email.toLowerCase().includes(q);
+        },
       );
     }
     return result;
@@ -400,6 +406,7 @@ function NewConversationDialog({
             <div className="space-y-0.5 p-1">
               {filtered.map((user) => {
                 const RoleIcon = ROLE_ICONS[user.role] || Users;
+                const userDisplayName = user.displayName || (user.role === 'client' && user.companyName ? user.companyName : user.name);
                 return (
                   <button
                     key={user.id}
@@ -411,15 +418,15 @@ function NewConversationDialog({
                     className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-gray-50"
                   >
                     <Avatar className="h-9 w-9">
-                      {user.avatar && <AvatarImage src={user.avatar} />}
+                      {user.avatar && <AvatarImage src={user.avatar} alt={userDisplayName} />}
                       <AvatarFallback className="bg-gray-200 text-gray-600 text-xs font-medium">
-                        {getInitials(user.name)}
+                        {getInitials(userDisplayName)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="truncate text-sm font-medium text-gray-900">
-                          {user.name}
+                          {userDisplayName}
                         </p>
                         <Badge className={cn('shrink-0 text-[10px] px-1.5 py-0 h-4 font-medium', ROLE_COLORS[user.role] || 'bg-gray-100 text-gray-600')}>
                           <RoleIcon className="h-2.5 w-2.5 mr-0.5" />

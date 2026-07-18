@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAppStore, authFetch } from '@/lib/store';
 
 interface AgentWithUser {
@@ -99,7 +99,10 @@ export default function ClientAgents() {
               <Card key={a.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-5">
                   <div className="flex items-start gap-3">
-                    <Avatar className="h-10 w-10"><AvatarFallback className="bg-green-500 text-white text-sm font-semibold">{a.user?.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
+                    <Avatar className="h-10 w-10">
+                      {a.user?.avatar && <AvatarImage src={a.user.avatar} alt={a.user?.name} />}
+                      <AvatarFallback className="bg-green-500 text-white text-sm font-semibold">{a.user?.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</AvatarFallback>
+                    </Avatar>
                     <div className="flex-1 min-w-0">
                       <h3 className="text-sm font-semibold">{a.user?.name}</h3>
                       <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">

@@ -64,10 +64,6 @@ model Agent {
   documents       Document[]
   availabilitySlots AvailabilitySlot[]
   notes           InternalNote[]
-  assessments     Assessment[]
-  pipelineStages  PipelineStage[]
-  placements      Placement[]
-  payments        Payment[]
 
   @@index([status])
   @@index([country])
@@ -91,10 +87,6 @@ model Client {
   jobPosts        JobPost[]
   callCenterNeeds CallCenterNeed[]
   notes           InternalNote[]
-  contracts       Contract[]
-  payments        Payment[]
-  placements      Placement[]
-  staffingRequests StaffingRequest[]
 
   @@index([industry])
 }
@@ -143,9 +135,7 @@ model PaymentRequest {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  // Made optional to handle orphan records (user may have been deleted).
-  // The API routes already use optional chaining (p.user?.name) so this is safe.
-  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   handledByUser   User?    @relation("PaymentTaker", fields: [handledBy], references: [id])
 
   @@index([status])
@@ -306,136 +296,4 @@ model TicketMessage {
 
   @@index([ticketId])
   @@index([createdAt])
-}
-
-// ============================================================================
-// NEW MODELS — previously missing, caused /api/assessments, /api/contracts,
-// /api/payments, /api/pipeline, /api/placements, /api/staffing-requests,
-// and /api/reports to crash with "Cannot read properties of undefined
-// (reading 'findMany')" because Prisma client didn't know about them.
-// ============================================================================
-
-model Assessment {
-  id              String   @id @default(cuid())
-  agentId         String
-  section         String   @default("general")
-  totalQuestions  Int      @default(0)
-  correctAnswers  Int      @default(0)
-  score           Float    @default(0)
-  passed          Boolean  @default(false)
-  answers         String   @default("[]")
-  completedAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@index([agentId])
-  @@index([section])
-}
-
-model Contract {
-  id              String   @id @default(cuid())
-  clientId        String
-  type            String
-  title           String
-  startDate       DateTime?
-  endDate         DateTime?
-  renewalDate     DateTime?
-  expirationDate  DateTime?
-  status          String   @default("Active")
-  content         String?
-  signedPdfUrl    String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@index([clientId])
-  @@index([status])
-}
-
-model Payment {
-  id              String   @id @default(cuid())
-  clientId        String
-  agentId         String?
-  amount          Float
-  method          String
-  type            String
-  status          String   @default("Pending")
-  dueDate         DateTime?
-  paidDate        DateTime?
-  description     String?
-  invoiceNumber   String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  agent           Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
-
-  @@index([clientId])
-  @@index([agentId])
-  @@index([status])
-}
-
-model PipelineStage {
-  id              String   @id @default(cuid())
-  agentId         String
-  stage           String
-  notes           String?
-  interviewer     String?
-  interviewDate   DateTime?
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@index([agentId])
-  @@index([stage])
-}
-
-model Placement {
-  id              String   @id @default(cuid())
-  agentId         String
-  clientId        String
-  requestId       String?
-  position        String
-  startDate       DateTime?
-  endDate         DateTime?
-  salary          Float?
-  commission      Float?
-  status          String   @default("Pending")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@index([agentId])
-  @@index([clientId])
-  @@index([status])
-}
-
-model StaffingRequest {
-  id              String   @id @default(cuid())
-  clientId        String
-  title           String
-  numberOfAgents  Int      @default(1)
-  languages       String   @default("[]")
-  experienceRequired Int   @default(0)
-  shift           String?
-  department      String?
-  salaryMin       Float?
-  salaryMax       Float?
-  startDate       DateTime?
-  specialRequirements String?
-  status          String   @default("Open")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@index([clientId])
-  @@index([status])
 }
