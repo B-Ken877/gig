@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { VerifiedBadge, VerifiedBadgeStyles, topVerificationTier, type VerificationTier } from '@/components/ui/verified-badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, Star, Volume2, VolumeX, Download } from 'lucide-react';
+import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, Star, Volume2, VolumeX, Download, BellRing, BellOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavItem { label: string; page: PageType; icon: React.ElementType; }
@@ -86,6 +86,17 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const [installPromptEvent, setInstallPromptEvent] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [showIosHint, setShowIosHint] = useState(false);
+  // Push subscription state — drives the bell toggle button in the sidebar.
+  // 'activating' covers the brief window between user-click and the server
+  // confirming the subscription is saved.
+  type PushState = 'checking' | 'unsupported' | 'permission_denied' | 'inactive' | 'activating' | 'active';
+  const [pushState, setPushState] = useState<PushState>('checking');
+  // Coarse-grained check for whether the origin is served over HTTPS or localhost.
+  // Push API + Service Workers require a secure context — on plain HTTP the
+  // buttons below would just spin forever, so we surface a clear error instead.
+  const isSecureContext = typeof window !== 'undefined'
+    ? (window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    : true;
 
   useEffect(() => { if (window.innerWidth < 1024) setSidebarOpen(false); }, [currentPage, setSidebarOpen]);
 
@@ -184,26 +195,141 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     setInstallPromptEvent(null);
   };
 
-  // Browser push notification subscription
-  useEffect(() => {
-    if (typeof window === 'undefined' || !currentUser || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    (async () => {
-      try {
-        const reg = await navigator.serviceWorker.register('/sw.js');
-        const existing = await reg.pushManager.getSubscription();
-        if (!existing) {
-          const res = await fetch('/api/push/subscribe');
-          const { vapidPublicKey } = await res.json();
-          const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidPublicKey });
-          await fetch('/api/push/subscribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
-            body: JSON.stringify({ subscription: sub }),
-          });
+  // Browser push notification subscription — proper explicit-permission flow.
+  //
+  // Previous bug: we called pushManager.subscribe() WITHOUT first asking
+  // Notification.requestPermission(). On most browsers that silently fails
+  // (subscription never created), so the PushSubscription table stayed empty
+  // and real system-tray notifications never fired — only the in-app poll
+  // chime played.
+  //
+  // New flow:
+  //   1. On mount: register SW, check existing subscription + permission state
+  //      → if permission already granted AND no subscription → silently subscribe
+  //      → if permission default or denied → show 'Enable Push' button
+  //   2. User clicks 'Enable Push' → requestPermission() → subscribe → POST to /api/push/subscribe
+  //   3. State transitions: 'inactive' → 'activating' → 'active' (or 'permission_denied' on reject)
+  const registerAndCheckPush = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setPushState('unsupported');
+      return;
+    }
+    if (!window.isSecureContext) {
+      // Browsers refuse to register a SW on insecure origins. We still let the
+      // UI render so the user understands why push is disabled.
+      setPushState('unsupported');
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      // Claim the active SW immediately so messages flow.
+      await navigator.serviceWorker.ready;
+
+      const existing = await reg.pushManager.getSubscription();
+      const perm = Notification.permission;
+
+      if (existing) {
+        // We have a subscription object — make sure the server knows about it.
+        // (Idempotent — server upserts by userId.)
+        if (currentUser) {
+          try {
+            await fetch('/api/push/subscribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
+              body: JSON.stringify({ subscription: existing }),
+            });
+          } catch (_) { /* best-effort */ }
         }
-      } catch (e) { /* push not supported or user declined */ }
-    })();
+        setPushState('active');
+      } else if (perm === 'granted') {
+        // Permission already granted but no subscription on this browser.
+        // Silently try to subscribe (no user prompt needed).
+        if (currentUser) {
+          await trySubscribe();
+        }
+      } else if (perm === 'denied') {
+        setPushState('permission_denied');
+      } else {
+        // 'default' — user hasn't been asked. Show the Enable Push button.
+        setPushState('inactive');
+      }
+    } catch (e) {
+      // SW registration failed (network, parse error, etc.)
+      console.warn('[push] SW registration failed:', e);
+      setPushState('inactive');
+    }
   }, [currentUser]);
+
+  // Internal: actually call pushManager.subscribe() + POST to server.
+  // Precondition: Notification.permission must be 'granted' before calling.
+  const trySubscribe = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      setPushState('activating');
+      const reg = await navigator.serviceWorker.ready;
+      const res = await fetch('/api/push/subscribe');
+      const { vapidPublicKey } = await res.json();
+      // Convert VAPID public key from base64url to Uint8Array for subscribe().
+      // Without this conversion, Chrome throws 'The provided applicationServerKey is not valid'.
+      const keyBytes = urlBase64ToUint8Array(vapidPublicKey);
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: keyBytes,
+      });
+      const postRes = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
+        body: JSON.stringify({ subscription: sub }),
+      });
+      if (!postRes.ok) throw new Error('Server rejected subscription');
+      setPushState('active');
+    } catch (e: any) {
+      console.warn('[push] subscribe failed:', e);
+      // If the user explicitly denied, reflect that. Otherwise fall back to inactive.
+      if (Notification.permission === 'denied') setPushState('permission_denied');
+      else setPushState('inactive');
+    }
+  }, [currentUser]);
+
+  // User-clicked handler for the "Enable Push" button.
+  const handleEnablePush = useCallback(async () => {
+    if (!currentUser) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setPushState('unsupported');
+      return;
+    }
+    try {
+      setPushState('activating');
+      // 1. Ask permission. iOS Safari 16.4+ REQUIRES this to be called from a
+      //    user-gesture handler (click) — calling it from a useEffect is rejected.
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        setPushState('permission_denied');
+        return;
+      }
+      // 2. Permission granted → subscribe + save to server.
+      await trySubscribe();
+    } catch (e) {
+      console.warn('[push] enable flow failed:', e);
+      setPushState('inactive');
+    }
+  }, [currentUser, trySubscribe]);
+
+  // On mount + when user changes, (re)check push state.
+  useEffect(() => {
+    registerAndCheckPush();
+  }, [registerAndCheckPush]);
+
+  // Helper: base64url → Uint8Array (VAPID key conversion for subscribe()).
+  function urlBase64ToUint8Array(base64String: string): Uint8Array {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const out = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) out[i] = rawData.charCodeAt(i);
+    return out;
+  }
 
   // Fetch in-app notifications (immediate + poll every 15s)
   // Dismissed notifications are tracked in dismissedRef and filtered out on each poll.
@@ -345,6 +471,51 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-green-400/70 w-full text-left mb-1">
               <Check className="h-4 w-4 shrink-0" />
               <span>App Installed</span>
+            </div>
+          )}
+          {/* Push notification enable/disable button. Reflects 5 states:
+              - active            → green BellRing, click to test/dismiss
+              - activating        → pulsing BellRing with 'Enabling…'
+              - inactive          → gray BellOff, click to enable (prompts for permission)
+              - permission_denied → red BellOff with tooltip — user must unblock in browser settings
+              - unsupported       → hidden (HTTP origin or ancient browser)
+              - checking          → briefly shown on first mount while SW registers */}
+          {pushState !== 'unsupported' && (
+            <button
+              onClick={() => { if (pushState === 'inactive' || pushState === 'permission_denied') handleEnablePush(); }}
+              disabled={pushState === 'activating' || pushState === 'active' || pushState === 'checking'}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors w-full text-left mb-1 border',
+                pushState === 'active' && 'text-green-400 bg-green-500/5 border-green-500/20',
+                pushState === 'activating' && 'text-yellow-400 bg-yellow-500/5 border-yellow-500/20 animate-pulse',
+                pushState === 'inactive' && 'text-gray-400 hover:bg-white/8 hover:text-white border-transparent',
+                pushState === 'permission_denied' && 'text-red-400 bg-red-500/5 border-red-500/20 hover:bg-red-500/10',
+                pushState === 'checking' && 'text-gray-500 border-transparent'
+              )}
+              title={
+                pushState === 'active' ? 'Push notifications are ON. You will receive notifications even when the app is closed.'
+                : pushState === 'activating' ? 'Enabling push notifications…'
+                : pushState === 'inactive' ? 'Tap to enable push notifications on this device'
+                : pushState === 'permission_denied' ? 'Push was blocked. To enable: tap the lock icon in your browser address bar → Site settings → Notifications → Allow.'
+                : 'Checking push notification status…'
+              }
+            >
+              {pushState === 'active' ? <BellRing className="h-4 w-4 shrink-0" />
+                : pushState === 'activating' ? <BellRing className="h-4 w-4 shrink-0" />
+                : <BellOff className="h-4 w-4 shrink-0" />}
+              <span>
+                {pushState === 'active' ? 'Push Active'
+                  : pushState === 'activating' ? 'Enabling…'
+                  : pushState === 'inactive' ? 'Enable Push'
+                  : pushState === 'permission_denied' ? 'Push Blocked'
+                  : 'Checking…'}
+              </span>
+            </button>
+          )}
+          {pushState === 'unsupported' && !isSecureContext && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-500 w-full text-left mb-1" title="Push notifications require HTTPS. Once we move to a permanent HTTPS domain, this will activate automatically.">
+              <BellOff className="h-4 w-4 shrink-0" />
+              <span>Push requires HTTPS</span>
             </div>
           )}
           <button
