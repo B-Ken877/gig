@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { useAppStore } from '@/lib/store';
 import type { PageType } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -58,6 +58,7 @@ function getPageTitle(page: PageType): string {
 }
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const { currentUser, currentPage, sidebarOpen, setSidebarOpen, navigateTo, logout, notifications } = useAppStore();
   const role = (currentUser?.role || 'visitor') as string;
   const navItems = (NAV_CONFIG[role] || []) as NavItem[];
@@ -130,7 +131,17 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     useAppStore.getState().setData('notifications', notifications.map(n => ({ ...n, isRead: true })));
   };
 
-  const initials = currentUser?.name ? currentUser.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : 'U';
+  // Fetch company name for call center users
+  useEffect(() => {
+    if (currentUser?.role === 'client') {
+      fetch('/api/users/company-name', { headers: { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role } })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.companyName) setDisplayName(d.companyName); })
+        .catch(() => {});
+    }
+  }, [currentUser]);
+
+  const effectiveName = displayName || currentUser?.name || 'User'; const initials = effectiveName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 
   return (
     <div className="min-h-screen flex bg-gray-50">
@@ -207,11 +218,11 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2 px-2 h-9">
                   <Avatar className="h-7 w-7"><AvatarFallback className="bg-[#16A34A] text-white text-xs font-semibold">{initials}</AvatarFallback></Avatar>
-                  <span className="hidden sm:inline text-sm font-medium text-gray-700 max-w-[120px] truncate">{currentUser?.name || 'User'}</span>
+                  <span className="hidden sm:inline text-sm font-medium text-gray-700 max-w-[120px] truncate">{effectiveName}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <div className="px-2 py-1.5"><p className="text-sm font-medium">{currentUser?.name}</p><p className="text-xs text-muted-foreground">{currentUser?.email}</p><p className="text-xs text-[#16A34A] capitalize">{currentUser?.role?.replace('_', ' ')}</p></div>
+                <div className="px-2 py-1.5"><p className="text-sm font-medium">{effectiveName}</p><p className="text-xs text-muted-foreground">{currentUser?.email}</p><p className="text-xs text-[#16A34A] capitalize">{currentUser?.role?.replace('_', ' ')}</p></div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigateTo('messages')}><MessageCircle className="mr-2 h-4 w-4" />Messages</DropdownMenuItem>
                 <DropdownMenuSeparator />

@@ -132,6 +132,11 @@ export default function ClientAgents() {
                           <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" /><span>{a.address}</span>
                         </div>
                       )}
+                      {a.dateOfBirth && (
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <Clock className="h-3.5 w-3.5 shrink-0" /><span>{new Date(a.dateOfBirth).toLocaleDateString()}</span>
+                        </div>
+                      )}
                       {a.salaryExpectation && a.salaryExpectation > 0 && (
                         <div className="flex items-center gap-2 text-gray-600">
                           <DollarSign className="h-3.5 w-3.5 shrink-0" /><span>{a.salaryExpectation} USD/month expected</span>

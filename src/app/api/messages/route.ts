@@ -49,14 +49,20 @@ export async function GET(req: NextRequest) {
         orderBy: { lastMessageAt: 'desc' },
       });
 
+      // Get company names for all client-role users in one query
+      const clientUserIds = [...new Set(conversations.flatMap(c => [c.user1, c.user2].filter(u => u?.role === 'client').map(u => u.id)))];
+      const clients = clientUserIds.length > 0 ? await db.client.findMany({ where: { userId: { in: clientUserIds } }, select: { userId: true, companyName: true } }) : [];
+      const companyNameMap = Object.fromEntries(clients.map(cl => [cl.userId, cl.companyName]));
+
       const result = conversations.map(c => {
         const isUser1 = c.user1Id === userId;
         const otherUser = isUser1 ? c.user2 : c.user1;
+        const displayName = otherUser?.role === 'client' && companyNameMap[otherUser.id] ? companyNameMap[otherUser.id] : (otherUser?.name || 'Unknown');
         return {
           id: c.id, user1Id: c.user1Id, user2Id: c.user2Id,
           lastMessage: c.lastMessage, lastMessageAt: c.lastMessageAt?.toISOString() || null,
           unreadCount: isUser1 ? c.unreadUser1 : c.unreadUser2,
-          otherUser: otherUser ? { name: otherUser.name, role: otherUser.role, avatar: otherUser.avatar } : { name: 'Unknown', role: 'visitor', avatar: null },
+          otherUser: otherUser ? { name: displayName, role: otherUser.role, avatar: otherUser.avatar } : { name: 'Unknown', role: 'visitor', avatar: null },
           latestMessage: c.messages[0] ? { id: c.messages[0].id, content: c.messages[0].content, senderId: c.messages[0].senderId, createdAt: c.messages[0].createdAt.toISOString() } : null,
         };
       });
@@ -113,8 +119,12 @@ export async function POST(req: NextRequest) {
           data: { [field]: { increment: 1 } },
         });
 
-        const sender = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
-        const senderName = sender?.name || 'Someone';
+        const sender = await db.user.findUnique({ where: { id: userId }, select: { name: true, role: true } });
+        let senderName = sender?.name || 'Someone';
+        if (sender?.role === 'client') {
+          const senderClient = await db.client.findUnique({ where: { userId }, select: { companyName: true } });
+          if (senderClient?.companyName) senderName = senderClient.companyName;
+        }
         const preview = content.trim().substring(0, 100) + (content.trim().length > 100 ? '...' : '');
 
         await createNotification({

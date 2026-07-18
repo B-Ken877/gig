@@ -53,6 +53,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.backupInternet !== undefined) data.backupInternet = Boolean(body.backupInternet);
     if (body.headsetAvailable !== undefined) data.headsetAvailable = Boolean(body.headsetAvailable);
     if (body.upsAvailable !== undefined) data.upsAvailable = Boolean(body.upsAvailable);
+    if (body.computerSpecs !== undefined) data.computerSpecs = typeof body.computerSpecs === 'string' ? body.computerSpecs : JSON.stringify(body.computerSpecs);
+    if (body.niu !== undefined) data.niu = body.niu || null;
 
     const agent = await db.agent.update({
       where: { id },

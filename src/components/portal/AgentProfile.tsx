@@ -118,10 +118,12 @@ export default function AgentProfile() {
           dateOfBirth: dateOfBirth || null,
         }),
       });
-      if (!res.ok) throw new Error('Save failed');
-      addToast({ title: 'Personal info saved', variant: 'success' });
-    } catch {
-      addToast({ title: 'Failed to save', variant: 'destructive' });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Save failed'); }
+      const updated = await res.json();
+      setAgent(prev => prev ? { ...prev, ...updated, user: { ...prev.user, phone } } : prev);
+      addToast({ title: 'Personal info updated!', description: 'Your changes have been saved.', variant: 'success' });
+    } catch (err) {
+      addToast({ title: 'Failed to save', description: err.message || 'Please try again.', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -142,10 +144,12 @@ export default function AgentProfile() {
           education,
         }),
       });
-      if (!res.ok) throw new Error('Save failed');
-      addToast({ title: 'Professional info saved', variant: 'success' });
-    } catch {
-      addToast({ title: 'Failed to save', variant: 'destructive' });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Save failed'); }
+      const updated = await res.json();
+      setAgent(prev => prev ? { ...prev, ...updated } : prev);
+      addToast({ title: 'Professional info updated!', description: 'Your skills and experience have been saved.', variant: 'success' });
+    } catch (err) {
+      addToast({ title: 'Failed to save', description: err.message || 'Please try again.', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -170,10 +174,12 @@ export default function AgentProfile() {
           salaryExpectation: salaryExpectation ? parseFloat(salaryExpectation) : null,
         }),
       });
-      if (!res.ok) throw new Error('Save failed');
-      addToast({ title: 'Technical info saved', variant: 'success' });
-    } catch {
-      addToast({ title: 'Failed to save', variant: 'destructive' });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Save failed'); }
+      const updated = await res.json();
+      setAgent(prev => prev ? { ...prev, ...updated } : prev);
+      addToast({ title: 'Technical info updated!', description: 'Your equipment details have been saved.', variant: 'success' });
+    } catch (err) {
+      addToast({ title: 'Failed to save', description: err.message || 'Please try again.', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
