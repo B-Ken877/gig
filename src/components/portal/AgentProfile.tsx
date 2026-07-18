@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { VerifiedBadge, VerifiedBadgeStyles, VerifiedBadgeStack, topVerificationTier, GigScoreRing, type VerificationTier } from '@/components/ui/verified-badge';
-import { Plus, X, Save, Loader2, Camera, CheckCircle2 } from 'lucide-react';
+import { Plus, X, Save, Loader2, Camera, CheckCircle2, Star } from 'lucide-react';
 
 const COUNTRIES = [
   'Haiti', 'Dominican Republic', 'Jamaica', 'Trinidad and Tobago',
@@ -34,7 +34,7 @@ const INTERNET_OPTIONS = ['5Mbps', '10Mbps', '25Mbps', '50Mbps+'];
 const SHIFT_OPTIONS = ['Morning', 'Afternoon', 'Night', 'Flexible'];
 
 export default function AgentProfile() {
-  const { currentUser, addToast, updateCurrentUser } = useAppStore();
+  const { currentUser, addToast, updateCurrentUser, navigateTo, setPendingReviewUserId } = useAppStore();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -313,6 +313,21 @@ export default function AgentProfile() {
               {uploadingAvatar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
               {uploadingAvatar ? 'Uploading...' : 'Change Picture'}
             </Button>
+            {currentUser?.id && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 ml-2 gap-2 border-[#FFB300]/40 text-[#B45309] hover:bg-amber-50 hover:text-[#B45309]"
+                onClick={() => {
+                  setPendingReviewUserId(currentUser.id, false);
+                  navigateTo('reviews');
+                }}
+                title="See reviews about you on the Reviews page"
+              >
+                <Star className="h-3.5 w-3.5 fill-[#FFB300] text-[#FFB300]" />
+                See My Reviews
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

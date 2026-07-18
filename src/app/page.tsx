@@ -33,6 +33,7 @@ import SupportPage from '@/components/portal/SupportPage';
 import TicketsPage from '@/components/portal/TicketsPage';
 import PendingPaymentPage from '@/components/portal/PendingPaymentPage';
 import MessagesPage from '@/components/portal/MessagesPage';
+import ReviewsPage from '@/components/portal/ReviewsPage';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -43,7 +44,7 @@ const PORTAL_PAGES = new Set<PageType>([
   'agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications',
   'client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile',
   'admin-dashboard','admin-users','admin-job-posts',
-  'payment-taker-dashboard','messages','support','tickets',
+  'payment-taker-dashboard','messages','support','tickets','reviews',
 ]);
 
 function PublicRouter() {
@@ -182,6 +183,7 @@ export default function Home() {
             {currentPage === 'messages' && <MessagesPage />}
             {currentPage === 'support' && <SupportPage />}
             {currentPage === 'tickets' && <TicketsPage />}
+            {currentPage === 'reviews' && <ReviewsPage />}
           </PortalLayout>
         </>
       );

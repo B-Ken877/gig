@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Save, Loader2, Building2, Globe, Receipt, User, Camera, CheckCircle2 } from 'lucide-react';
+import { Save, Loader2, Building2, Globe, Receipt, User, Camera, CheckCircle2, Star } from 'lucide-react';
 
 const INDUSTRIES = [
   'Customer Service', 'Technical Support', 'Sales & Telemarketing',
@@ -20,7 +20,7 @@ const INDUSTRIES = [
 ];
 
 export default function ClientProfile() {
-  const { currentUser, addToast, updateCurrentUser } = useAppStore();
+  const { currentUser, addToast, updateCurrentUser, navigateTo, setPendingReviewUserId } = useAppStore();
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -229,6 +229,21 @@ export default function ClientProfile() {
         <Badge className={currentUser?.accountStatus === 'active' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 'bg-amber-100 text-amber-700 hover:bg-amber-100'}>
           {currentUser?.accountStatus?.replace('_', ' ') || 'Active'}
         </Badge>
+        {currentUser?.id && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 border-[#FFB300]/40 text-[#B45309] hover:bg-amber-50 hover:text-[#B45309] shrink-0"
+            onClick={() => {
+              setPendingReviewUserId(currentUser.id, false);
+              navigateTo('reviews');
+            }}
+            title="See reviews about your company on the Reviews page"
+          >
+            <Star className="h-3.5 w-3.5 fill-[#FFB300] text-[#FFB300]" />
+            See Reviews
+          </Button>
+        )}
       </div>
 
       <Tabs defaultValue="company" className="w-full">

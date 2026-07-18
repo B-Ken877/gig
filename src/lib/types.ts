@@ -10,7 +10,8 @@ export type PageType =
   | 'messages'
   | 'pending-payment'
   | 'support'
-  | 'tickets';
+  | 'tickets'
+  | 'reviews';
 
 export type UserRole = 'visitor' | 'agent' | 'client' | 'payment_taker' | 'admin';
 
@@ -114,4 +115,40 @@ export interface ToastMessage {
 export interface DashboardStat {
   label: string; value: string | number; change?: string;
   icon?: string; trend?: 'up' | 'down' | 'neutral';
+}
+
+// ─── Reviews (Trustpilot-style) ──────────────────────────────────────────
+export interface Review {
+  id: string;
+  reviewerId: string;
+  revieweeId: string;
+  rating: number;          // 1–5
+  title?: string | null;
+  comment: string;
+  createdAt: string;
+  updatedAt: string;
+  // Joined fields (returned by /api/reviews)
+  reviewer?: {
+    id: string;
+    name: string;
+    role: string;
+    avatar?: string | null;
+    // For call-center reviewers, surface the company name
+    companyName?: string | null;
+  };
+}
+
+// Search hit for the Reviews "find an agent or call center" box
+export interface ReviewableUser {
+  id: string;
+  name: string;             // for agents: user.name; for clients: companyName
+  role: UserRole;
+  avatar?: string | null;
+  // Aggregate rating stats (null if no reviews yet)
+  avgRating?: number | null;
+  reviewCount?: number;
+  // Optional enrichments
+  industry?: string | null;     // clients only
+  country?: string | null;      // agents only
+  skills?: string[];            // agents only
 }

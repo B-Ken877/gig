@@ -27,15 +27,15 @@ const VALID_PAGES: ReadonlySet<PageType> = new Set<PageType>([
   'agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications',
   'client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile',
   'admin-dashboard','admin-users','admin-job-posts',
-  'payment-taker-dashboard','messages','support','tickets',
+  'payment-taker-dashboard','messages','support','tickets','reviews',
 ]);
 
 // FEATURE: Role-based page access control
 const ROLE_PAGE_MAP: Partial<Record<UserRole, ReadonlySet<PageType>>> = {
-  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications','messages','support','pending-payment']),
-  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile','messages','support','pending-payment']),
-  admin: new Set(['admin-dashboard','admin-users','admin-job-posts','messages']),
-  payment_taker: new Set(['payment-taker-dashboard','messages','tickets','support']),
+  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications','messages','support','pending-payment','reviews']),
+  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile','messages','support','pending-payment','reviews']),
+  admin: new Set(['admin-dashboard','admin-users','admin-job-posts','messages','reviews']),
+  payment_taker: new Set(['payment-taker-dashboard','messages','tickets','support','reviews']),
 };
 
 interface AuthSlice {
@@ -90,11 +90,17 @@ interface NavSlice {
   currentPage: PageType;
   previousPages: PageType[];
   pendingChatUserId: string | null;
+  // Reviews feature: pre-populate the Reviews page with a specific user
+  // (set when the user clicks "See Reviews" on a profile or agent card).
+  // After ReviewsPage consumes it, it calls setPendingReviewUserId(null).
+  pendingReviewUserId: string | null;
+  pendingReviewScrollToForm?: boolean;
   navigateTo: (page: PageType) => void;
   goBack: () => void;
   isPublicPage: () => boolean;
   isRoleAllowed: (page: PageType) => boolean;
   syncFromHash: () => void;
+  setPendingReviewUserId: (id: string | null, scrollToForm?: boolean) => void;
 }
 
 const createNavSlice = (
@@ -104,9 +110,20 @@ const createNavSlice = (
   currentPage: 'home',
   previousPages: [],
   pendingChatUserId: null,
+  pendingReviewUserId: null,
+  pendingReviewScrollToForm: false,
   navigateTo: (page: PageType) => {
     const { currentPage } = get();
-    if (page === currentPage) return;
+    // FEATURE: when navigating AWAY from the reviews page, clear the pending review
+    // pre-population state so it doesn't leak into a future visit.
+    if (currentPage !== 'reviews' && page !== 'reviews') {
+      // no-op — keep current pendingReviewUserId if any
+    }
+    if (page === currentPage) {
+      // same-page nav: still scroll to top
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+      return;
+    }
     // BUG FIX: Limit history depth to prevent memory growth
     set(() => ({ previousPages: [...get().previousPages.slice(-20), currentPage], currentPage: page }));
     if (typeof window !== 'undefined') {
@@ -140,6 +157,9 @@ const createNavSlice = (
     if (hash && VALID_PAGES.has(hash as PageType)) {
       set(() => ({ currentPage: hash as PageType }));
     }
+  },
+  setPendingReviewUserId: (id, scrollToForm = false) => {
+    set(() => ({ pendingReviewUserId: id, pendingReviewScrollToForm: scrollToForm }));
   },
 });
 

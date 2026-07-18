@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Search, MessageCircle, Users, MapPin, Globe, AlertCircle, RefreshCw, GraduationCap, Briefcase, Clock, Wifi, Monitor, Headphones, Battery, ChevronDown, ChevronUp, DollarSign, Sparkles } from 'lucide-react';
+import { Search, MessageCircle, Users, MapPin, Globe, AlertCircle, RefreshCw, GraduationCap, Briefcase, Clock, Wifi, Monitor, Headphones, Battery, ChevronDown, ChevronUp, DollarSign, Sparkles, Star } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,7 +34,7 @@ interface AgentWithUser {
 }
 
 export default function ClientAgents() {
-  const { currentUser, navigateTo, addToast } = useAppStore();
+  const { currentUser, navigateTo, addToast, setPendingReviewUserId } = useAppStore();
   const [agents, setAgents] = useState<AgentWithUser[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -244,6 +244,18 @@ export default function ClientAgents() {
                     <Button size="sm" variant="outline" className="flex-1 text-[#16A34A] border-[#16A34A]/30 hover:bg-green-50"
                       onClick={() => startChat(a.user.id)}>
                       <MessageCircle className="h-3.5 w-3.5 mr-1.5" />Contact Agent
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 border-[#FFB300]/40 text-[#B45309] hover:bg-amber-50 hover:text-[#B45309]"
+                      onClick={() => {
+                        setPendingReviewUserId(a.user.id, true);
+                        navigateTo('reviews');
+                      }}
+                      title="See and leave reviews for this agent"
+                    >
+                      <Star className="h-3.5 w-3.5 mr-1.5 fill-[#FFB300] text-[#FFB300]" />Reviews
                     </Button>
                     <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setExpandedId(isExpanded ? null : a.id)}>
                       {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}

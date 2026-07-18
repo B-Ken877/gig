@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { VerifiedBadge, VerifiedBadgeStyles, topVerificationTier, type VerificationTier } from '@/components/ui/verified-badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones } from 'lucide-react';
+import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavItem { label: string; page: PageType; icon: React.ElementType; }
@@ -21,6 +21,7 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'Documents', page: 'agent-documents', icon: FileText },
     { label: 'Availability', page: 'agent-availability', icon: Calendar },
     { label: 'My Applications', page: 'agent-applications', icon: ClipboardList },
+    { label: 'Reviews', page: 'reviews', icon: Star },
     { label: 'Customer Support', page: 'support', icon: Headphones },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
@@ -31,17 +32,20 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'My Needs', page: 'client-needs', icon: Briefcase },
     { label: 'Agent Bank', page: 'client-agents', icon: Users },
     { label: 'Applications', page: 'client-applications', icon: ClipboardList },
+    { label: 'Reviews', page: 'reviews', icon: Star },
     { label: 'Customer Support', page: 'support', icon: Headphones },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
   payment_taker: [
     { label: 'Payment Requests', page: 'payment-taker-dashboard', icon: DollarSign },
+    { label: 'Reviews', page: 'reviews', icon: Star },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
   admin: [
     { label: 'Dashboard', page: 'admin-dashboard', icon: LayoutDashboard },
     { label: 'Job Postings', page: 'admin-job-posts', icon: ClipboardList },
     { label: 'Users', page: 'admin-users', icon: Users },
+    { label: 'Reviews', page: 'reviews', icon: Star },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
 };
@@ -53,7 +57,7 @@ function getPageTitle(page: PageType): string {
     'agent-dashboard': 'Dashboard', 'agent-profile': 'My Profile', 'agent-documents': 'Documents', 'agent-availability': 'Availability', 'agent-applications': 'My Applications',
     'client-dashboard': 'Dashboard', 'client-agents': 'Agent Bank', 'client-needs': 'My Staffing Needs', 'client-jobs': 'Job Postings', 'client-applications': 'Applications', 'client-profile': 'Company Profile',
     'admin-dashboard': 'Admin Dashboard', 'admin-users': 'Users', 'admin-job-posts': 'Job Postings',
-    'payment-taker-dashboard': 'Payment Requests', 'messages': 'Messages', 'pending-payment': 'Complete Payment', 'support': 'Customer Support', 'tickets': 'Support Tickets',
+    'payment-taker-dashboard': 'Payment Requests', 'messages': 'Messages', 'pending-payment': 'Complete Payment', 'support': 'Customer Support', 'tickets': 'Support Tickets', 'reviews': 'Reviews',
   };
   return map[page] || 'Dashboard';
 }

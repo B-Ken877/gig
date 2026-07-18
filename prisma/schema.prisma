@@ -40,6 +40,9 @@ model User {
   verifiedBy        String?
   gigScore          Int      @default(0)
   gigScoreUpdatedAt DateTime?
+  // ─── Reviews (Trustpilot-style) ───────────────────────────────────────
+  reviewsGiven     Review[] @relation("ReviewReviewer")
+  reviewsReceived  Review[] @relation("ReviewReviewee")
   @@index([role])
   @@index([email])
 }
@@ -447,4 +450,32 @@ model StaffingRequest {
 
   @@index([clientId])
   @@index([status])
+}
+
+// ============================================================================
+// REVIEW MODEL — Trustpilot-style cross-role reviews
+//   • Only agents can review call centers (role === 'client')
+//   • Only call centers (clients) can review agents (role === 'agent')
+//   • One review per (reviewer, reviewee) pair — enforced by @@unique
+//   • POST /api/reviews  validates the role-pair before insert
+//   • GET  /api/reviews?revieweeId=...  returns aggregate + list
+// ============================================================================
+
+model Review {
+  id          String   @id @default(cuid())
+  reviewerId  String
+  revieweeId  String
+  rating      Int      // 1–5 stars
+  title       String?
+  comment     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reviewer    User     @relation("ReviewReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewee    User     @relation("ReviewReviewee", fields: [revieweeId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewerId, revieweeId])
+  @@index([revieweeId])
+  @@index([reviewerId])
+  @@index([rating])
 }
