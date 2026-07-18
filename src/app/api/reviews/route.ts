@@ -178,13 +178,27 @@ export async function POST(req: NextRequest) {
     if (comment.length < 10) return NextResponse.json({ error: 'Please write at least 10 characters' }, { status: 400 });
     if (revieweeId === auth.userId) return NextResponse.json({ error: 'You cannot review yourself' }, { status: 400 });
 
-    // Load reviewer + reviewee in parallel
+    // Load reviewer + reviewee in parallel.
+    // We also pull the reviewer's name (and companyName if they're a client)
+    // so the notification we send to the reviewee can identify who left the
+    // review without an extra round-trip on the client.
     const [reviewer, reviewee] = await Promise.all([
-      db.user.findUnique({ where: { id: auth.userId }, select: { id: true, role: true, accountStatus: true } }),
-      db.user.findUnique({ where: { id: revieweeId }, select: { id: true, role: true, accountStatus: true } }),
+      db.user.findUnique({ where: { id: auth.userId }, select: { id: true, name: true, role: true, accountStatus: true } }),
+      db.user.findUnique({ where: { id: revieweeId }, select: { id: true, name: true, role: true, accountStatus: true } }),
     ]);
     if (!reviewer) return NextResponse.json({ error: 'Reviewer not found' }, { status: 404 });
     if (!reviewee) return NextResponse.json({ error: 'User to review not found' }, { status: 404 });
+
+    // For client reviewers, fetch the company name so the notification reads
+    // "TechCall Inc left you a 5-star review" instead of "Miguel Louiséma…".
+    let reviewerDisplayName = reviewer.name || 'Someone';
+    if (reviewer.role === 'client') {
+      const client = await db.client.findUnique({
+        where: { userId: reviewer.id },
+        select: { companyName: true },
+      }).catch(() => null);
+      if (client?.companyName) reviewerDisplayName = client.companyName;
+    }
 
     // Cross-role rule: agent <-> client only
     const isAgentReviewingClient = reviewer.role === 'agent' && reviewee.role === 'client';
@@ -214,6 +228,40 @@ export async function POST(req: NextRequest) {
         comment,
       },
     });
+
+    // ── Notify the reviewee ─────────────────────────────────────────────
+    // Create an in-app Notification addressed to the person being reviewed.
+    // The PortalLayout polling loop picks this up within ~15s and plays the
+    // chime + shows it in the bell dropdown.
+    //
+    // Title format: "TechCall Inc left you a 5-star review"
+    // Message: the review title (if any) or a snippet of the comment.
+    //
+    // Wrapped in .catch() so a notification failure doesn't fail the review
+    // save — the review itself already succeeded at this point.
+    try {
+      const stars = '★'.repeat(rating) + '☆'.repeat(5 - rating);
+      const notifTitle = `${reviewerDisplayName} left you a ${rating}-star review`;
+      let notifMessage = '';
+      if (title) {
+        notifMessage = `${stars}  "${title}"`;
+      } else {
+        // Snippet of the comment (first ~120 chars, no mid-word cut)
+        const snippet = comment.length > 120
+          ? comment.slice(0, 120).replace(/\s+\S*$/, '') + '…'
+          : comment;
+        notifMessage = `${stars}  ${snippet}`;
+      }
+      await db.notification.create({
+        data: {
+          userId: revieweeId,
+          title: notifTitle,
+          message: notifMessage,
+          type: 'review',
+          channel: 'in-app',
+        },
+      });
+    } catch (_) { /* notification failure is non-fatal */ }
 
     return NextResponse.json({
       review: {
