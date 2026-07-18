@@ -36,7 +36,7 @@ export default function AgentDashboard() {
     const headers = { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role };
 
     Promise.all([
-      fetch('/api/agents', { headers }).then(r => {
+      fetch('/api/agents?userId=' + currentUser.id, { headers }).then(r => {
         if (!r.ok) throw new Error('Failed to load profile');
         return r.json();
       }),
@@ -54,9 +54,11 @@ export default function AgentDashboard() {
       }),
 
     ])
-      .then(([agentData, msgData, needsData, interestData, postsData]) => {
+      .then(([agentData, msgData, needsData, interestData]) => {
         if (!isMountedRef.current) return;
-        if (agentData.agents) {
+        if (agentData && agentData.id) {
+          setAgent(agentData);
+        } else if (agentData.agents) {
           const me = agentData.agents.find((a: any) => a.userId === currentUser.id);
           if (me) setAgent(me);
         }
@@ -204,24 +206,6 @@ export default function AgentDashboard() {
           </CardContent>
         </Card>
       </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {quickActions.map(a => {
-          const Icon = a.icon;
-          return (
-            <Card key={a.page} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo(a.page)}>
-              <CardContent className="p-5">
-                <div className={"h-10 w-10 rounded-lg " + a.bg + " flex items-center justify-center mb-3"}>
-                  <Icon className={"h-5 w-5 " + a.color} />
-                </div>
-                <h3 className="text-sm font-semibold">{a.label}</h3>
-                <p className="text-xs text-gray-500 mt-1">{a.desc}</p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
       <Card>
         <CardContent className="p-5">
           <div className="flex items-center justify-between mb-4">
@@ -307,7 +291,24 @@ export default function AgentDashboard() {
         </CardContent>
       </Card>
 
-      {agent && (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {quickActions.map(a => {
+          const Icon = a.icon;
+          return (
+            <Card key={a.page} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo(a.page)}>
+              <CardContent className="p-5">
+                <div className={"h-10 w-10 rounded-lg " + a.bg + " flex items-center justify-center mb-3"}>
+                  <Icon className={"h-5 w-5 " + a.color} />
+                </div>
+                <h3 className="text-sm font-semibold">{a.label}</h3>
+                <p className="text-xs text-gray-500 mt-1">{a.desc}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+            {agent && (
         <Card>
           <CardContent className="p-5">
             <h3 className="text-sm font-semibold mb-3">Profile Summary</h3>
