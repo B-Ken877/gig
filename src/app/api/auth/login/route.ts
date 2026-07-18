@@ -30,11 +30,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Allow pending_approval users to log in (they need to access payment chat)
+    // Parse verificationTiers JSON string into an array for the client.
+    let verificationTiers: string[] = [];
+    try {
+      const parsed = JSON.parse(user.verificationTiers || '[]');
+      if (Array.isArray(parsed)) verificationTiers = parsed.filter((t) => typeof t === 'string');
+    } catch { /* leave empty */ }
     return NextResponse.json({
       user: {
         id: user.id, email: user.email, name: user.name,
         role: user.role, phone: user.phone, avatar: user.avatar,
         isActive: user.isActive, accountStatus: user.accountStatus,
+        verificationTiers,
+        gigScore: user.gigScore || 0,
       },
     });
   } catch (error) {

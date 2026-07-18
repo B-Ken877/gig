@@ -1,12 +1,20 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Search, MessageCircle, Users, MapPin, Globe, AlertCircle, RefreshCw, GraduationCap, Briefcase, Clock, Wifi, Monitor, Headphones, Battery, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
+import { Search, MessageCircle, Users, MapPin, Globe, AlertCircle, RefreshCw, GraduationCap, Briefcase, Clock, Wifi, Monitor, Headphones, Battery, ChevronDown, ChevronUp, DollarSign, Sparkles } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAppStore, authFetch } from '@/lib/store';
+import {
+  VerifiedBadge,
+  VerifiedBadgeStyles,
+  VerifiedBadgeStack,
+  topVerificationTier,
+  GigScoreRing,
+  type VerificationTier,
+} from '@/components/ui/verified-badge';
 
 interface AgentWithUser {
   id: string; userId: string; status: string; country?: string;
@@ -15,7 +23,14 @@ interface AgentWithUser {
   ram?: string; processor?: string; internetSpeed?: string;
   backupInternet: boolean; headsetAvailable: boolean; upsAvailable: boolean;
   education: string[]; previousEmployers: string[];
-  user: { id: string; name: string; email: string; role: string; avatar?: string; accountStatus: string };
+  dateOfBirth?: string;
+  user: {
+    id: string; name: string; email: string; role: string;
+    avatar?: string; accountStatus: string;
+    verificationTiers?: VerificationTier[];
+    verifiedAt?: string | null;
+    gigScore?: number;
+  };
 }
 
 export default function ClientAgents() {
@@ -37,6 +52,10 @@ export default function ClientAgents() {
             ...a,
             education: Array.isArray(a.education) ? a.education : (typeof a.education === 'string' ? JSON.parse(a.education || '[]') : []),
             previousEmployers: Array.isArray(a.previousEmployers) ? a.previousEmployers : (typeof a.previousEmployers === 'string' ? JSON.parse(a.previousEmployers || '[]') : []),
+            user: {
+              ...a.user,
+              verificationTiers: Array.isArray(a.user?.verificationTiers) ? a.user.verificationTiers : [],
+            },
           }));
           setAgents(parsed.filter((a: AgentWithUser) => a.user?.accountStatus === 'active'));
         }
@@ -69,6 +88,7 @@ export default function ClientAgents() {
 
   return (
     <div className="space-y-6">
+      <VerifiedBadgeStyles />
       <div><h2 className="text-lg font-semibold">Agent Bank</h2><p className="text-sm text-gray-500">Browse available agents and view their full profiles</p></div>
 
       <div className="relative max-w-md">
@@ -95,22 +115,68 @@ export default function ClientAgents() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map(a => {
             const isExpanded = expandedId === a.id;
+            const tiers = a.user?.verificationTiers || [];
+            const topTier = topVerificationTier(tiers);
+            const score = a.user?.gigScore || 0;
             return (
-              <Card key={a.id} className="hover:shadow-md transition-shadow">
+              <Card key={a.id} className="hover:shadow-md transition-shadow relative overflow-hidden">
+                {/* Premium accent strip — only for verified agents */}
+                {topTier && (
+                  <div
+                    className="absolute top-0 left-0 right-0 h-0.5"
+                    style={{
+                      background: topTier === 'elite' ? 'linear-gradient(90deg, #ffd700, #ffffff, #ffd700)'
+                                : topTier === 'top_rated' ? 'linear-gradient(90deg, #ffd54f, #ffb300)'
+                                : topTier === 'trusted_partner' ? 'linear-gradient(90deg, #10b981, #059669)'
+                                : topTier === 'background_checked' ? 'linear-gradient(90deg, #e53935, #c62828)'
+                                : 'linear-gradient(90deg, #1e88e5, #0d47a1)',
+                    }}
+                  />
+                )}
                 <CardContent className="p-5">
                   <div className="flex items-start gap-3">
-                    <Avatar className="h-10 w-10">
-                      {a.user?.avatar && <AvatarImage src={a.user.avatar} alt={a.user?.name} />}
-                      <AvatarFallback className="bg-green-500 text-white text-sm font-semibold">{a.user?.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</AvatarFallback>
-                    </Avatar>
+                    <div className="relative shrink-0">
+                      <Avatar className="h-12 w-12 ring-2 ring-white shadow-sm">
+                        {a.user?.avatar && <AvatarImage src={a.user.avatar} alt={a.user?.name} />}
+                        <AvatarFallback className="bg-gradient-to-br from-[#16A34A] to-[#0B1A2E] text-white text-sm font-semibold">{a.user?.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      {/* Top-tier seal — sits on the avatar corner */}
+                      {topTier && (
+                        <div className="absolute -bottom-1 -right-1">
+                          <VerifiedBadge tier={topTier} iconOnly size="sm" verifiedAt={a.user?.verifiedAt} />
+                        </div>
+                      )}
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-semibold">{a.user?.name}</h3>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="text-sm font-semibold">{a.user?.name}</h3>
+                        {tiers.length > 1 && (
+                          <span className="inline-flex items-center gap-0.5">
+                            {tiers.filter(t => t !== topTier).slice(0, 2).map(t => (
+                              <VerifiedBadge key={t} tier={t} size="xs" showLabel={false} />
+                            ))}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
                         {a.country && <><MapPin className="h-3 w-3" />{a.country}</>}
                         {a.experience > 0 && <><span className="mx-1">·</span>{a.experience}yr exp</>}
                       </div>
                     </div>
+                    {/* Gig score ring — only show if score > 0 */}
+                    {score > 0 && (
+                      <div className="shrink-0">
+                        <GigScoreRing score={score} size={36} showLabel={false} />
+                      </div>
+                    )}
                   </div>
+
+                  {tiers.length > 0 && (
+                    <div className="mt-3">
+                      <VerifiedBadgeStack tiers={tiers} size="xs" />
+                    </div>
+                  )}
+
                   {a.skills?.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-3">
                       {a.skills.slice(0, 4).map((s, i) => <Badge key={i} variant="secondary" className="text-xs">{s}</Badge>)}
@@ -127,7 +193,6 @@ export default function ClientAgents() {
                     <div className="mt-2"><Badge variant="outline" className="text-xs">Shift: {a.preferredShift}</Badge></div>
                   )}
 
-                  {/* Expandable full profile */}
                   {isExpanded && (
                     <div className="mt-4 pt-4 border-t space-y-3 text-sm">
                       {a.address && (

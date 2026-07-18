@@ -22,6 +22,10 @@ export interface User {
   id: string; email: string; name: string; role: UserRole;
   phone?: string; avatar?: string; isActive: boolean;
   accountStatus: AccountStatus;
+  // Verification + Gig Score (premium badges)
+  verificationTiers?: string[];
+  verifiedAt?: string | null;
+  gigScore?: number;
 }
 
 export interface Agent {

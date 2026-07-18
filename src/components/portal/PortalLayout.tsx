@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { VerifiedBadge, VerifiedBadgeStyles, topVerificationTier, type VerificationTier } from '@/components/ui/verified-badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -156,8 +157,15 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const initials = effectiveName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
   const avatarUrl = currentUser?.avatar || null;
 
+  // Parse the current user's verification tiers (from the store / login response)
+  const myTiers: VerificationTier[] = Array.isArray(currentUser?.verificationTiers)
+    ? (currentUser.verificationTiers as VerificationTier[])
+    : [];
+  const myTopTier = topVerificationTier(myTiers);
+
   return (
     <div className="min-h-screen flex bg-gray-50">
+      <VerifiedBadgeStyles />
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
       <aside className={cn('fixed lg:sticky top-0 left-0 z-50 h-screen w-[280px] text-white flex flex-col transition-transform duration-300', sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0')} style={{ backgroundColor: '#0B1A2E' }}>
         <div className="flex items-center justify-between px-6 py-5">
@@ -229,11 +237,18 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             </DropdownMenu>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2 px-2 h-9">
-                  <Avatar className="h-7 w-7">
-                    {avatarUrl && <AvatarImage src={avatarUrl} alt={effectiveName} />}
-                    <AvatarFallback className="bg-[#16A34A] text-white text-xs font-semibold">{initials}</AvatarFallback>
-                  </Avatar>
+                <Button variant="ghost" className="gap-2 px-2 h-9 relative">
+                  <div className="relative">
+                    <Avatar className="h-7 w-7">
+                      {avatarUrl && <AvatarImage src={avatarUrl} alt={effectiveName} />}
+                      <AvatarFallback className="bg-[#16A34A] text-white text-xs font-semibold">{initials}</AvatarFallback>
+                    </Avatar>
+                    {myTopTier && (
+                      <span className="absolute -bottom-1 -right-1">
+                        <VerifiedBadge tier={myTopTier} iconOnly size="xs" verifiedAt={currentUser?.verifiedAt} />
+                      </span>
+                    )}
+                  </div>
                   <span className="hidden sm:inline text-sm font-medium text-gray-700 max-w-[120px] truncate">{effectiveName}</span>
                 </Button>
               </DropdownMenuTrigger>

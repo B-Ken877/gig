@@ -19,6 +19,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { VerifiedBadge, VerifiedBadgeStyles, VerifiedBadgeStack, topVerificationTier, GigScoreRing, type VerificationTier } from '@/components/ui/verified-badge';
 import { Plus, X, Save, Loader2, Camera, CheckCircle2 } from 'lucide-react';
 
 const COUNTRIES = [
@@ -242,8 +243,15 @@ export default function AgentProfile() {
   const displayName = currentUser?.name || 'Agent';
   const initials = displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 
+  // Parse the current user's verification tiers
+  const myTiers: VerificationTier[] = Array.isArray(currentUser?.verificationTiers)
+    ? (currentUser.verificationTiers as VerificationTier[])
+    : [];
+  const myTopTier = topVerificationTier(myTiers);
+
   return (
     <div className="space-y-6">
+      <VerifiedBadgeStyles />
       <div>
         <h2 className="text-2xl font-bold text-gray-900">My Profile</h2>
         <p className="text-sm text-gray-500 mt-1">Manage your personal, professional, and technical information.</p>
@@ -257,6 +265,11 @@ export default function AgentProfile() {
               {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} />}
               <AvatarFallback className="bg-[#16A34A] text-white text-2xl font-bold">{initials}</AvatarFallback>
             </Avatar>
+            {myTopTier && (
+              <span className="absolute -top-2 -right-2">
+                <VerifiedBadge tier={myTopTier} iconOnly size="lg" verifiedAt={currentUser?.verifiedAt} />
+              </span>
+            )}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -275,8 +288,18 @@ export default function AgentProfile() {
             />
           </div>
           <div className="flex-1 text-center sm:text-left">
-            <h3 className="text-lg font-semibold text-gray-900">{displayName}</h3>
+            <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+              <h3 className="text-lg font-semibold text-gray-900">{displayName}</h3>
+              {typeof currentUser?.gigScore === 'number' && currentUser.gigScore > 0 && (
+                <GigScoreRing score={currentUser.gigScore} size={32} showLabel={false} />
+              )}
+            </div>
             <p className="text-sm text-gray-500">{currentUser?.email}</p>
+            {myTiers.length > 0 && (
+              <div className="mt-2 flex items-center justify-center sm:justify-start">
+                <VerifiedBadgeStack tiers={myTiers} size="sm" />
+              </div>
+            )}
             <p className="text-xs text-gray-400 mt-1">
               Upload a profile picture from your device. It will be shown in chats, the agent bank, and your applications.
             </p>

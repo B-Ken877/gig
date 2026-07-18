@@ -19,6 +19,9 @@ export async function GET(req: NextRequest) {
       select: {
         id: true, email: true, name: true, role: true, phone: true,
         avatar: true, isActive: true, accountStatus: true, createdAt: true,
+        // Verification + Gig Score (premium badges)
+        verificationTiers: true, verifiedAt: true, verifiedBy: true,
+        gigScore: true, gigScoreUpdatedAt: true,
         // Bring the client's companyName through the relation so the admin table
         // can show "TechCall Inc" instead of the contact person's personal name.
         client: { select: { companyName: true, industry: true } },
@@ -34,6 +37,11 @@ export async function GET(req: NextRequest) {
         // Flatten for the client
         companyName: u.client?.companyName || null,
         industry: u.client?.industry || null,
+        // Verification — parse JSON string into array for the client
+        verificationTiers: (() => { try { const v = JSON.parse(u.verificationTiers || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } })(),
+        verifiedAt: u.verifiedAt ? u.verifiedAt.toISOString() : null,
+        verifiedBy: u.verifiedBy,
+        gigScore: u.gigScore || 0,
       })),
     });
   } catch (error) {

@@ -30,7 +30,16 @@ model User {
   paymentRequests PaymentRequest[]
   pushSubscription  PushSubscription?
   supportTickets   SupportTicket[]
-
+  // ─── Verification + Gig Score (premium badges) ────────────────────────
+  // verificationTiers stores a JSON-encoded array of tier names, e.g.
+  //   ["verified","top_rated"]
+  // Tier names match the VerificationTier union in the UI:
+  //   verified | top_rated | trusted_partner | background_checked | elite
+  verificationTiers String   @default("[]")
+  verifiedAt        DateTime?
+  verifiedBy        String?
+  gigScore          Int      @default(0)
+  gigScoreUpdatedAt DateTime?
   @@index([role])
   @@index([email])
 }

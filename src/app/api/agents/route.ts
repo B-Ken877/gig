@@ -27,19 +27,19 @@ export async function GET(req: NextRequest) {
     if (id) {
       const agent = await db.agent.findUnique({
         where: { id },
-        include: { user: { select: { id: true, name: true, email: true, role: true, phone: true, avatar: true, accountStatus: true } }, documents: true, availabilitySlots: true },
+        include: { user: { select: { id: true, name: true, email: true, role: true, phone: true, avatar: true, accountStatus: true, verificationTiers: true, verifiedAt: true, gigScore: true } }, documents: true, availabilitySlots: true },
       });
       if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-      return NextResponse.json({ agent: { ...agent, languages: safeJson<string[]>(agent.languages, []), skills: safeJson<string[]>(agent.skills, []), education: safeJson<string[]>(agent.education, []), previousEmployers: safeJson<string[]>(agent.previousEmployers, []), computerSpecs: safeJson<string>(agent.computerSpecs, '') } });
+      return NextResponse.json({ agent: { ...agent, languages: safeJson<string[]>(agent.languages, []), skills: safeJson<string[]>(agent.skills, []), education: safeJson<string[]>(agent.education, []), previousEmployers: safeJson<string[]>(agent.previousEmployers, []), computerSpecs: safeJson<string>(agent.computerSpecs, ''), user: agent.user ? { ...agent.user, verificationTiers: safeJson<string[]>(agent.user.verificationTiers, []) } : agent.user } });
     }
 
     if (userId) {
       const agent = await db.agent.findUnique({
         where: { userId },
-        include: { user: { select: { id: true, name: true, email: true, role: true, phone: true, avatar: true, accountStatus: true } }, documents: true, availabilitySlots: true },
+        include: { user: { select: { id: true, name: true, email: true, role: true, phone: true, avatar: true, accountStatus: true, verificationTiers: true, verifiedAt: true, gigScore: true } }, documents: true, availabilitySlots: true },
       });
       if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-      return NextResponse.json({ ...agent, languages: safeJson<string[]>(agent.languages, []), skills: safeJson<string[]>(agent.skills, []), education: safeJson<string[]>(agent.education, []), previousEmployers: safeJson<string[]>(agent.previousEmployers, []), computerSpecs: safeJson<string>(agent.computerSpecs, ''), dateOfBirth: agent.dateOfBirth?.toISOString() || null, createdAt: agent.createdAt.toISOString(), updatedAt: agent.updatedAt.toISOString() });
+      return NextResponse.json({ ...agent, languages: safeJson<string[]>(agent.languages, []), skills: safeJson<string[]>(agent.skills, []), education: safeJson<string[]>(agent.education, []), previousEmployers: safeJson<string[]>(agent.previousEmployers, []), computerSpecs: safeJson<string>(agent.computerSpecs, ''), dateOfBirth: agent.dateOfBirth?.toISOString() || null, createdAt: agent.createdAt.toISOString(), updatedAt: agent.updatedAt.toISOString(), user: agent.user ? { ...agent.user, verificationTiers: safeJson<string[]>(agent.user.verificationTiers, []) } : agent.user });
     }
 
     const where: Record<string, unknown> = {};
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
 
     const agents = await db.agent.findMany({
       where,
-      include: { user: { select: { id: true, name: true, email: true, role: true, phone: true, avatar: true, accountStatus: true } } },
+      include: { user: { select: { id: true, name: true, email: true, role: true, phone: true, avatar: true, accountStatus: true, verificationTiers: true, verifiedAt: true, gigScore: true } }, documents: { select: { id: true } } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -59,6 +59,7 @@ export async function GET(req: NextRequest) {
       skills: safeJson<string[]>(a.skills, []),
       education: safeJson<string[]>(a.education, []),
       previousEmployers: safeJson<string[]>(a.previousEmployers, []),
+      user: a.user ? { ...a.user, verificationTiers: safeJson<string[]>(a.user.verificationTiers, []) } : a.user,
     })) });
   } catch (error) {
     console.error('GET /api/agents error:', error);
