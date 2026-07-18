@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { VerifiedBadge, VerifiedBadgeStyles, topVerificationTier, type VerificationTier } from '@/components/ui/verified-badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, Star, Volume2, VolumeX } from 'lucide-react';
+import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, Star, Volume2, VolumeX, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavItem { label: string; page: PageType; icon: React.ElementType; }
@@ -79,6 +79,13 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   // Single reused Audio element — reusing avoids re-fetching the MP3 on every
   // chime and lets the browser pre-buffer it.
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // PWA install prompt event. Captured from `beforeinstallprompt` so we can
+  // show our own "Install App" button (Chrome/Edge/Android). iOS Safari does
+  // NOT fire this event — users there must use Share → Add to Home Screen,
+  // so we show them a hint instead.
+  const [installPromptEvent, setInstallPromptEvent] = useState<any>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [showIosHint, setShowIosHint] = useState(false);
 
   useEffect(() => { if (window.innerWidth < 1024) setSidebarOpen(false); }, [currentPage, setSidebarOpen]);
 
@@ -121,6 +128,61 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     navigator.serviceWorker.addEventListener('message', handler);
     return () => navigator.serviceWorker.removeEventListener('message', handler);
   }, [playNotifSound]);
+
+  // PWA install handling:
+  // - `beforeinstallprompt` fires on Chrome/Edge/Android when the browser has
+  //   decided the site is installable. We capture it, prevent the default
+  //   mini-infobar, and show our own "Install App" button instead.
+  // - `appinstalled` fires once the user accepts any install prompt.
+  // - iOS Safari never fires `beforeinstallprompt` — for iOS users we show a
+  //   hint button that explains how to use Share → Add to Home Screen.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Detect if already running as installed PWA (display-mode: standalone)
+    // or iOS Safari standalone mode.
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      // iOS Safari uses navigator.standalone (deprecated but still set)
+      (window.navigator as any).standalone === true;
+    if (isStandalone) setIsInstalled(true);
+
+    const onBeforeInstall = (e: any) => {
+      e.preventDefault();
+      setInstallPromptEvent(e);
+    };
+    const onInstalled = () => {
+      setIsInstalled(true);
+      setInstallPromptEvent(null);
+    };
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  // Detect iOS Safari so we can show the "Add to Home Screen" hint button.
+  // iOS Safari never fires `beforeinstallprompt`, so without this hint iOS
+  // users would have no obvious way to install the PWA.
+  const isIosSafari = (() => {
+    if (typeof window === 'undefined' || !navigator) return false;
+    const ua = navigator.userAgent || '';
+    const isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isWebkit = /WebKit/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
+    return isIos && isWebkit;
+  })();
+
+  const handleInstallClick = async () => {
+    if (!installPromptEvent) return;
+    installPromptEvent.prompt();
+    const choice = await installPromptEvent.userChoice;
+    if (choice && choice.outcome === 'accepted') {
+      setIsInstalled(true);
+    }
+    setInstallPromptEvent(null);
+  };
 
   // Browser push notification subscription
   useEffect(() => {
@@ -266,6 +328,25 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </ScrollArea>
         <div className="px-3 pb-3">
           <Separator className="bg-white/10 mb-3" />
+          {/* PWA install button — shown when: (a) browser has fired beforeinstallprompt
+              (Chrome/Edge/Android), OR (b) we're on iOS Safari so the user needs
+              a hint to use Share → Add to Home Screen. Hidden once installed. */}
+          {!isInstalled && (installPromptEvent || isIosSafari) && (
+            <button
+              onClick={() => installPromptEvent ? handleInstallClick() : setShowIosHint(true)}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[#16A34A] bg-[#16A34A]/10 hover:bg-[#16A34A]/20 transition-colors w-full text-left mb-1 border border-[#16A34A]/30"
+              title="Install Gig Solutions as an app"
+            >
+              <Download className="h-4 w-4 shrink-0" />
+              <span>Install App</span>
+            </button>
+          )}
+          {isInstalled && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-green-400/70 w-full text-left mb-1">
+              <Check className="h-4 w-4 shrink-0" />
+              <span>App Installed</span>
+            </div>
+          )}
           <button
             onClick={() => setNotifSoundPref(notifSoundPref === 'on' ? 'off' : 'on')}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:bg-white/8 hover:text-white transition-colors w-full text-left mb-1"
@@ -280,6 +361,24 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             <ArrowLeft className="h-4 w-4 shrink-0" /><span>Back to Website</span>
           </button>
         </div>
+        {/* iOS hint modal — simple inline prompt explaining Share → Add to Home Screen. */}
+        {showIosHint && (
+          <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={() => setShowIosHint(false)}>
+            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Install on iPhone</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                iOS doesn’t support our one-tap install button. To add Gig Solutions to your Home Screen:
+              </p>
+              <ol className="text-sm text-gray-700 space-y-2 mb-4 list-decimal list-inside">
+                <li>Tap the <span className="font-semibold">Share</span> icon at the bottom of Safari.</li>
+                <li>Scroll and tap <span className="font-semibold">Add to Home Screen</span>.</li>
+                <li>Tap <span className="font-semibold">Add</span> in the top-right corner.</li>
+              </ol>
+              <p className="text-xs text-gray-500 mb-4">Once installed, push notifications will appear in your phone’s notification tray.</p>
+              <Button onClick={() => setShowIosHint(false)} className="w-full bg-[#16A34A] hover:bg-[#16A34A]/90 text-white">Got it</Button>
+            </div>
+          </div>
+        )}
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">

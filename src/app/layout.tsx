@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
@@ -24,14 +24,48 @@ export const metadata: Metadata = {
   description: "Enterprise staffing platform connecting qualified customer support agents with call centers and companies seeking remote talent across the Caribbean and beyond.",
   keywords: ["staffing", "remote talent", "customer support", "call center", "Caribbean", "Gig Solutions", "SRMS"],
   authors: [{ name: "Gig Solutions" }],
+  // PWA manifest — lets Android Chrome + Edge + Samsung Internet offer
+  // "Install app" / "Add to Home screen". iOS Safari uses apple-touch-icon +
+  // apple-mobile-web-app-* meta tags below.
+  manifest: "/manifest.json",
   icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%230B1A2E'/><text x='50' y='66' font-size='44' font-weight='bold' fill='%23C9A84C' text-anchor='middle' font-family='sans-serif'>GS</text></svg>",
+    icon: [
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    shortcut: ["/icon-192.png"],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Gig Solutions",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false,
+    address: false,
+    email: false,
   },
   openGraph: {
     title: "Gig Solutions — Staffing Resource Management System",
     description: "Enterprise staffing platform for Caribbean and global remote talent.",
     type: "website",
   },
+};
+
+// Viewport export (Next.js 14+ requires theme-color here, not in metadata)
+export const viewport: Viewport = {
+  themeColor: "#0B1A2E",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
