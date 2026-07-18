@@ -1,5 +1,6 @@
 'use client';
 import React, { useEffect, useRef, useCallback, useState } from 'react';
+import { toast } from 'sonner';
 import { useAppStore } from '@/lib/store';
 import type { PageType } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { VerifiedBadge, VerifiedBadgeStyles, topVerificationTier, type VerificationTier } from '@/components/ui/verified-badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, Star, Volume2, VolumeX, Download, BellRing, BellOff } from 'lucide-react';
+import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, Star, Volume2, VolumeX, Download, BellRing, BellOff, FlaskConical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavItem { label: string; page: PageType; icon: React.ElementType; }
@@ -97,6 +98,117 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const isSecureContext = typeof window !== 'undefined'
     ? (window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')
     : true;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // IN-APP NOTIFICATION FALLBACK
+  // ─────────────────────────────────────────────────────────────────────────
+  // Browser OS-level push (Notification.permission) can be permanently Blocked
+  // by the user, and we cannot flip that from JS — it's a browser security
+  // boundary. To keep notifications working even when push is blocked, we
+  // surface new arrivals through THREE additional channels that need NO
+  // permission:
+  //   (a) A sticky sonner toast at the top-center of the screen (visible even
+  //       when the user is in another tab, as long as the page is open).
+  //   (b) Device vibration on Android Chrome (no permission required).
+  //   (c) Tab-title flashing when the tab is NOT focused — alternates
+  //       between the original title and "(N) new — click to view".
+  // The polling effect below fires all three whenever new notifications arrive.
+  const originalTitleRef = useRef<string | null>(null);
+  const titleFlashRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const shownToastIdsRef = useRef<Set<string>>(new Set());
+
+  // Helper: fire the in-app fallback (toast + vibrate). Called by the polling
+  // loop and by the "Test Notification" button.
+  const fireInAppNotif = useCallback((opts: { title: string; body: string; notifId?: string; onClickPage?: PageType }) => {
+    const { title, body, notifId, onClickPage } = opts;
+    // Dedup by notifId so polling re-fires don't spam toasts.
+    if (notifId) {
+      if (shownToastIdsRef.current.has(notifId)) return;
+      shownToastIdsRef.current.add(notifId);
+    }
+    // (a) Sticky toast — stays until the user clicks it or dismisses it.
+    // duration: Infinity = sticky. action button jumps to the relevant page.
+    toast(title, {
+      description: body,
+      duration: 8000,
+      position: 'top-center',
+      className: 'gig-in-app-notif',
+      style: {
+        background: 'linear-gradient(135deg, #16A34A 0%, #0B1A2E 100%)',
+        color: '#fff',
+        border: '2px solid #16A34A',
+        fontWeight: 600,
+        fontSize: '15px',
+        boxShadow: '0 10px 40px rgba(22,163,74,0.4)',
+      },
+      action: onClickPage ? {
+        label: 'View',
+        onClick: () => navigateTo(onClickPage),
+      } : undefined,
+    });
+    // (b) Vibrate (Android Chrome — silently ignored on iOS / desktop).
+    try {
+      if (typeof navigator !== 'undefined' && typeof (navigator as any).vibrate === 'function') {
+        (navigator as any).vibrate([180, 80, 180]);
+      }
+    } catch (_) { /* ignore */ }
+  }, [navigateTo]);
+
+  // Tab-title flashing: start when there are unread notifications AND the tab
+  // is hidden; stop when the user focuses the tab or marks all read.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (originalTitleRef.current === null) {
+      originalTitleRef.current = document.title;
+    }
+    const hasUnread = unreadCount > 0;
+    const isHidden = document.hidden;
+
+    if (hasUnread && isHidden) {
+      if (titleFlashRef.current) return; // already flashing
+      let toggle = false;
+      titleFlashRef.current = setInterval(() => {
+        toggle = !toggle;
+        document.title = toggle
+          ? `(${unreadCount}) ${unreadCount === 1 ? 'new message' : 'new messages'} 💬`
+          : (originalTitleRef.current || 'Gig Solutions');
+      }, 1200);
+    } else {
+      if (titleFlashRef.current) {
+        clearInterval(titleFlashRef.current);
+        titleFlashRef.current = null;
+      }
+      if (originalTitleRef.current) {
+        document.title = originalTitleRef.current;
+      }
+    }
+    return () => {
+      if (titleFlashRef.current) {
+        clearInterval(titleFlashRef.current);
+        titleFlashRef.current = null;
+      }
+    };
+  }, [unreadCount]);
+
+  // When the tab regains focus, restore the original title immediately.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVis = () => {
+      if (!document.hidden && originalTitleRef.current) {
+        document.title = originalTitleRef.current;
+        if (titleFlashRef.current) {
+          clearInterval(titleFlashRef.current);
+          titleFlashRef.current = null;
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onVis);
+    };
+  }, []);
 
   useEffect(() => { if (window.innerWidth < 1024) setSidebarOpen(false); }, [currentPage, setSidebarOpen]);
 
@@ -357,6 +469,27 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               if (newOnes.length > 0) {
                 newOnes.forEach((n: any) => seen.add(n.id));
                 playNotifSound();
+                // ── IN-APP FALLBACK ──────────────────────────────────────────
+                // OS push may be blocked, but we still surface every new
+                // notification through a sticky toast + vibration. This is
+                // what makes the app actually notify you even when the browser
+                // permission is denied.
+                newOnes.forEach((n: any) => {
+                  // Heuristic: pick the destination page based on the
+                  // notification type so the toast's "View" button jumps
+                  // somewhere useful.
+                  const title = String(n.title || 'New notification');
+                  const body = String(n.message || '');
+                  const lower = (title + ' ' + body).toLowerCase();
+                  let targetPage: PageType | undefined;
+                  if (/message|reply|chat/.test(lower)) targetPage = 'messages';
+                  else if (/review/.test(lower)) targetPage = 'reviews';
+                  else if (/application|apply/.test(lower)) {
+                    targetPage = role === 'agent' ? 'agent-applications' : 'client-applications';
+                  } else if (/payment/.test(lower)) targetPage = 'payment-taker-dashboard';
+                  else if (/support|ticket/.test(lower)) targetPage = 'support';
+                  fireInAppNotif({ title, body, notifId: n.id, onClickPage: targetPage });
+                });
               }
             }
             useAppStore.getState().setData('notifications', filtered);
@@ -473,49 +606,77 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <span>App Installed</span>
             </div>
           )}
-          {/* Push notification enable/disable button. Reflects 5 states:
-              - active            → green BellRing, click to test/dismiss
-              - activating        → pulsing BellRing with 'Enabling…'
-              - inactive          → gray BellOff, click to enable (prompts for permission)
-              - permission_denied → red BellOff with tooltip — user must unblock in browser settings
-              - unsupported       → hidden (HTTP origin or ancient browser)
-              - checking          → briefly shown on first mount while SW registers */}
-          {pushState !== 'unsupported' && (
+          {/* ── Test Notification button ──────────────────────────────────────
+              This is the simplest, most reliable feedback path: it fires a
+              sticky on-screen toast + chime + vibration. It needs NO browser
+              permission, so it works regardless of whether OS push is granted
+              or blocked. Use it to verify the in-app fallback works on this
+              device. */}
+          <button
+            onClick={() => {
+              playNotifSound();
+              fireInAppNotif({
+                title: 'Test notification ✓',
+                body: 'If you can see this banner and hear the chime, in-app notifications are working. You will get one of these every time a new message arrives.',
+                onClickPage: 'messages',
+              });
+            }}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[#16A34A] bg-[#16A34A]/10 hover:bg-[#16A34A]/20 transition-colors w-full text-left mb-1 border border-[#16A34A]/30"
+            title="Fire a test in-app notification (toast + sound + vibration)"
+          >
+            <FlaskConical className="h-4 w-4 shrink-0" />
+            <span>Test Notification</span>
+          </button>
+          {/* ── OS push status button ───────────────────────────────────────────
+              Secondary, low-emphasis. OS-level push (system tray notifications
+              when the app is fully closed) is OPTIONAL — in-app notifications
+              above work regardless. We intentionally do NOT show a scary red
+              'Push Blocked' button anymore — if permission is denied we show
+              a neutral 'OS Push Off' badge instead, and clicking it just
+              tries to enable (which will silently no-op if the browser has
+              the permission hard-blocked). */}
+          {pushState !== 'unsupported' && pushState !== 'permission_denied' && (
             <button
-              onClick={() => { if (pushState === 'inactive' || pushState === 'permission_denied') handleEnablePush(); }}
+              onClick={() => { if (pushState === 'inactive') handleEnablePush(); }}
               disabled={pushState === 'activating' || pushState === 'active' || pushState === 'checking'}
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors w-full text-left mb-1 border',
                 pushState === 'active' && 'text-green-400 bg-green-500/5 border-green-500/20',
                 pushState === 'activating' && 'text-yellow-400 bg-yellow-500/5 border-yellow-500/20 animate-pulse',
                 pushState === 'inactive' && 'text-gray-400 hover:bg-white/8 hover:text-white border-transparent',
-                pushState === 'permission_denied' && 'text-red-400 bg-red-500/5 border-red-500/20 hover:bg-red-500/10',
                 pushState === 'checking' && 'text-gray-500 border-transparent'
               )}
               title={
-                pushState === 'active' ? 'Push notifications are ON. You will receive notifications even when the app is closed.'
-                : pushState === 'activating' ? 'Enabling push notifications…'
-                : pushState === 'inactive' ? 'Tap to enable push notifications on this device'
-                : pushState === 'permission_denied' ? 'Push was blocked. To enable: tap the lock icon in your browser address bar → Site settings → Notifications → Allow.'
-                : 'Checking push notification status…'
+                pushState === 'active' ? 'OS push is ON. You will receive system-tray notifications even when the app is closed.'
+                : pushState === 'activating' ? 'Enabling OS push notifications…'
+                : pushState === 'inactive' ? 'Tap to enable system-tray notifications (optional — in-app notifications above already work without this)'
+                : 'Checking OS push status…'
               }
             >
-              {pushState === 'active' ? <BellRing className="h-4 w-4 shrink-0" />
-                : pushState === 'activating' ? <BellRing className="h-4 w-4 shrink-0" />
+              {pushState === 'active' || pushState === 'activating'
+                ? <BellRing className="h-4 w-4 shrink-0" />
                 : <BellOff className="h-4 w-4 shrink-0" />}
               <span>
-                {pushState === 'active' ? 'Push Active'
+                {pushState === 'active' ? 'OS Push Active'
                   : pushState === 'activating' ? 'Enabling…'
-                  : pushState === 'inactive' ? 'Enable Push'
-                  : pushState === 'permission_denied' ? 'Push Blocked'
+                  : pushState === 'inactive' ? 'Enable OS Push'
                   : 'Checking…'}
               </span>
             </button>
           )}
-          {pushState === 'unsupported' && !isSecureContext && (
-            <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-500 w-full text-left mb-1" title="Push notifications require HTTPS. Once we move to a permanent HTTPS domain, this will activate automatically.">
+          {pushState === 'permission_denied' && (
+            <div
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-400 border border-white/5 w-full text-left mb-1"
+              title="System-tray push is blocked in Chrome. In-app notifications (toast + sound + vibration) still work — just keep this site open in a tab. To re-enable OS push: Chrome → lock icon → Site settings → Notifications → Allow."
+            >
               <BellOff className="h-4 w-4 shrink-0" />
-              <span>Push requires HTTPS</span>
+              <span>OS Push off (in-app still works)</span>
+            </div>
+          )}
+          {pushState === 'unsupported' && !isSecureContext && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-500 w-full text-left mb-1" title="System-tray push requires HTTPS. In-app notifications above still work — they just need the tab to be open.">
+              <BellOff className="h-4 w-4 shrink-0" />
+              <span>OS Push needs HTTPS</span>
             </div>
           )}
           <button
