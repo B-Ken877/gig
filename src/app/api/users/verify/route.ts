@@ -1,7 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireRole } from '@/lib/auth-middleware';
-import { VERIFICATION_TIERS, type VerificationTier } from '@/components/ui/verified-badge';
+
+/**
+ * Verification tier values. Must match the VerificationTier union in
+ * src/components/ui/verified-badge.tsx.
+ *
+ * We re-declare here (rather than importing from the component) because
+ * importing a client component's exports into a server route can produce
+ * tree-shaken references that aren't callable at runtime under Next.js's
+ * standalone build. A literal local array is always safe.
+ */
+type VerificationTier = 'verified' | 'top_rated' | 'trusted_partner' | 'background_checked' | 'elite';
+
+const VERIFICATION_TIERS: VerificationTier[] = [
+  'verified',
+  'top_rated',
+  'trusted_partner',
+  'background_checked',
+  'elite',
+];
+
+const TIER_LABELS: Record<VerificationTier, string> = {
+  verified: 'Verified',
+  top_rated: 'Top Rated',
+  trusted_partner: 'Trusted Partner',
+  background_checked: 'Background Checked',
+  elite: 'Elite',
+};
 
 /**
  * POST /api/users/verify
@@ -78,14 +104,15 @@ export async function POST(req: NextRequest) {
     });
 
     // Notify the user about the verification change
+    const label = TIER_LABELS[tier as VerificationTier] || tier;
     const title =
       action === 'grant'
-        ? `You've been verified: ${labelFor(tier as VerificationTier)}`
-        : `Verification removed: ${labelFor(tier as VerificationTier)}`;
+        ? `You've been verified: ${label}`
+        : `Verification removed: ${label}`;
     const message =
       action === 'grant'
-        ? `An administrator granted you the "${labelFor(tier as VerificationTier)}" badge. It's now visible across the platform.`
-        : `An administrator removed the "${labelFor(tier as VerificationTier)}" badge from your profile.`;
+        ? `An administrator granted you the "${label}" badge. It's now visible across the platform.`
+        : `An administrator removed the "${label}" badge from your profile.`;
 
     await db.notification.create({
       data: {
@@ -114,15 +141,4 @@ export async function POST(req: NextRequest) {
     console.error('POST /api/users/verify error:', error);
     return NextResponse.json({ error: 'Failed to update verification' }, { status: 500 });
   }
-}
-
-function labelFor(tier: VerificationTier): string {
-  const labels: Record<VerificationTier, string> = {
-    verified: 'Verified',
-    top_rated: 'Top Rated',
-    trusted_partner: 'Trusted Partner',
-    background_checked: 'Background Checked',
-    elite: 'Elite',
-  };
-  return labels[tier] || tier;
 }
