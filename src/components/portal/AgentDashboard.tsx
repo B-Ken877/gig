@@ -169,7 +169,7 @@ export default function AgentDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Available Jobs</p>
-                <p className="text-2xl font-bold mt-1">{needs.filter(n => !appliedIds.has(n.id)).length}</p>
+                <p className="text-2xl font-bold mt-1">{needs.length}</p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center">
                 <Briefcase className="h-5 w-5 text-blue-600" />
@@ -212,7 +212,7 @@ export default function AgentDashboard() {
             <div className="flex items-center gap-2">
               <Briefcase className="h-5 w-5 text-green-600" />
               <h3 className="text-sm font-semibold">Available Jobs</h3>
-              <Badge variant="secondary" className="text-xs">{needs.filter(n => !appliedIds.has(n.id)).length} open</Badge>
+              <Badge variant="secondary" className="text-xs">{needs.length} job{needs.length !== 1 ? "s" : ""}{needs.filter(n => !appliedIds.has(n.id)).length > 0 ? " · " + needs.filter(n => !appliedIds.has(n.id)).length + " new" : ""}</Badge>
             </div>
           </div>
           {needsLoading ? (
