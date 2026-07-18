@@ -66,7 +66,8 @@ export async function POST(req: NextRequest) {
     });
 
     if (supportAgent) {
-      await createNotification(supportAgent.id, {
+      await createNotification({
+        userId: supportAgent.id,
         title: 'New Support Ticket',
         message: 'A new ticket: "' + subject + '"',
         type: 'support_ticket',
@@ -102,7 +103,8 @@ export async function PUT(req: NextRequest) {
     const ticket = await db.supportTicket.update({ where: { id }, data });
 
     if (status === 'closed') {
-      await createNotification(ticket.userId, {
+      await createNotification({
+        userId: ticket.userId,
         title: 'Ticket Closed',
         message: 'Your ticket "' + ticket.subject + '" has been resolved.',
         type: 'support_ticket',

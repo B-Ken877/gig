@@ -85,7 +85,8 @@ export async function POST(
     // Notify the other party
     if (isOwner && ticket.assignedTo) {
       // User sent message -> notify support agent
-      await createNotification(ticket.assignedTo, {
+      await createNotification({
+        userId: ticket.assignedTo,
         title: 'New reply on ticket: ' + ticket.subject,
         message: content.trim().slice(0, 100),
         type: 'support_ticket',
@@ -94,7 +95,8 @@ export async function POST(
       });
     } else if (isAssigned && ticket.userId) {
       // Support agent replied -> notify user
-      await createNotification(ticket.userId, {
+      await createNotification({
+        userId: ticket.userId,
         title: 'Support reply on: ' + ticket.subject,
         message: content.trim().slice(0, 100),
         type: 'support_ticket',

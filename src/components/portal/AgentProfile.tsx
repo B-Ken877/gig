@@ -97,14 +97,22 @@ export default function AgentProfile() {
   }, [currentUser, addToast]);
 
   const savePersonal = async () => {
-    if (!agent) return;
+    if (!agent || !currentUser) return;
     setSaving(true);
     try {
+      // Update phone on User model
+      if (phone !== (agent.user?.phone || '')) {
+        await fetch('/api/users/phone', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
+          body: JSON.stringify({ phone }),
+        }).catch(() => {});
+      }
+      // Update agent fields
       const res = await fetch(`/api/agents/${agent.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
         body: JSON.stringify({
-          phone,
           country,
           address,
           dateOfBirth: dateOfBirth || null,
@@ -120,12 +128,12 @@ export default function AgentProfile() {
   };
 
   const saveProfessional = async () => {
-    if (!agent) return;
+    if (!agent || !currentUser) return;
     setSaving(true);
     try {
       const res = await fetch(`/api/agents/${agent.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
         body: JSON.stringify({
           languages,
           experience,
@@ -144,12 +152,12 @@ export default function AgentProfile() {
   };
 
   const saveTechnical = async () => {
-    if (!agent) return;
+    if (!agent || !currentUser) return;
     setSaving(true);
     try {
       const res = await fetch(`/api/agents/${agent.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
         body: JSON.stringify({
           computerSpecs,
           ram,

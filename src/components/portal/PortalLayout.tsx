@@ -35,7 +35,6 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
   ],
   payment_taker: [
     { label: 'Payment Requests', page: 'payment-taker-dashboard', icon: DollarSign },
-    { label: 'Tickets', page: 'tickets', icon: ClipboardList },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
   admin: [

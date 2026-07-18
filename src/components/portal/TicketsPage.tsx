@@ -202,7 +202,7 @@ export default function TicketsPage() {
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }}}
                 placeholder="Type your reply..."
                 rows={1}
-                className="flex-1 resize-none border-gray-200 text-sm min-h-0"
+                className="flex-1 resize-none border-gray-200 text-sm min-h-[40px] h-10 focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
                 disabled={chatTicket.status === 'closed'}
               />
               <Button

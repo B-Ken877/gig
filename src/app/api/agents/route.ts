@@ -8,6 +8,8 @@ export async function GET(req: NextRequest) {
     const id = searchParams.get('id');
     const q = searchParams.get('q');
 
+    const userId = searchParams.get('userId');
+
     if (id) {
       const agent = await db.agent.findUnique({
         where: { id },
@@ -15,6 +17,15 @@ export async function GET(req: NextRequest) {
       });
       if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
       return NextResponse.json({ agent: { ...agent, languages: JSON.parse(agent.languages || '[]'), skills: JSON.parse(agent.skills || '[]'), education: JSON.parse(agent.education || '[]'), previousEmployers: JSON.parse(agent.previousEmployers || '[]'), computerSpecs: JSON.parse(agent.computerSpecs || '{}') } });
+    }
+
+    if (userId) {
+      const agent = await db.agent.findUnique({
+        where: { userId },
+        include: { user: { select: { id: true, name: true, email: true, role: true, phone: true, avatar: true, accountStatus: true } }, documents: true, availabilitySlots: true },
+      });
+      if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+      return NextResponse.json({ ...agent, languages: JSON.parse(agent.languages || '[]'), skills: JSON.parse(agent.skills || '[]'), education: JSON.parse(agent.education || '[]'), previousEmployers: JSON.parse(agent.previousEmployers || '[]'), computerSpecs: JSON.parse(agent.computerSpecs || '{}'), dateOfBirth: agent.dateOfBirth?.toISOString() || null, createdAt: agent.createdAt.toISOString(), updatedAt: agent.updatedAt.toISOString() });
     }
 
     const where: Record<string, unknown> = {};
@@ -28,7 +39,13 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json({ agents: agents.map(a => ({ ...a, languages: JSON.parse(a.languages || '[]'), skills: JSON.parse(a.skills || '[]') })) });
+    return NextResponse.json({ agents: agents.map(a => ({
+      ...a,
+      languages: JSON.parse(a.languages || '[]'),
+      skills: JSON.parse(a.skills || '[]'),
+      education: JSON.parse(a.education || '[]'),
+      previousEmployers: JSON.parse(a.previousEmployers || '[]'),
+    })) });
   } catch (error) {
     console.error('GET /api/agents error:', error);
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
