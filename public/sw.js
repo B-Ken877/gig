@@ -3,12 +3,16 @@
 const NOTIFICATION_ICON = '/notification-icon.png';     // 192x192 PNG
 const NOTIFICATION_BADGE = '/notification-badge.png';   // 72x72 monochrome PNG (Android status bar)
 
+// Bump on every behavior change so existing clients re-activate the SW.
+// v3: ensures push events fire for installed PWAs even when no client tab is open.
+const SW_CACHE = 'gig-sw-v3';
+
 // --- Lifecycle --------------------------------------------------------------
 self.addEventListener('install', (event) => {
   // Pre-cache the notification icon + badge + chime so the first push
   // doesn't have to do a network round-trip before showing/sounding.
   event.waitUntil((async () => {
-    const cache = await caches.open('gig-sw-v2');
+    const cache = await caches.open(SW_CACHE);
     try { await cache.addAll([NOTIFICATION_ICON, NOTIFICATION_BADGE, '/sounds/notification.mp3']); } catch (_) {}
     self.skipWaiting();
   })());
@@ -20,7 +24,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     // Purge old caches from previous SW versions.
     const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k !== 'gig-sw-v2').map(k => caches.delete(k)));
+    await Promise.all(keys.filter(k => k !== SW_CACHE).map(k => caches.delete(k)));
     await self.clients.claim();
   })());
 });

@@ -257,6 +257,11 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   //   decided the site is installable. We capture it, prevent the default
   //   mini-infobar, and show our own "Install App" button instead.
   // - `appinstalled` fires once the user accepts any install prompt.
+  //   At this exact moment Chrome shows the friendliest possible notification
+  //   permission prompt (the user just demonstrated trust by installing), so
+  //   we AUTO-request permission + auto-subscribe. This is the key flow that
+  //   makes push work for installed PWA users — they get system-tray
+  //   notifications + chime + vibration even when the app is closed.
   // - iOS Safari never fires `beforeinstallprompt` — for iOS users we show a
   //   hint button that explains how to use Share → Add to Home Screen.
   useEffect(() => {
@@ -274,9 +279,57 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       e.preventDefault();
       setInstallPromptEvent(e);
     };
-    const onInstalled = () => {
+    const onInstalled = async () => {
       setIsInstalled(true);
       setInstallPromptEvent(null);
+      // ── AUTO-ENABLE PUSH RIGHT AFTER INSTALL ──────────────────────────
+      // The user just installed the PWA — Chrome will show the friendliest
+      // possible permission prompt at this moment. Request + subscribe
+      // automatically. Skip if already granted/denied (idempotent).
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        if (!window.isSecureContext) return;
+        let perm = Notification.permission;
+        if (perm === 'default') {
+          // requestPermission() called from a user-gesture-adjacent event
+          // (appinstalled fires synchronously after the install acceptance
+          // gesture) — Chrome accepts this.
+          perm = await Notification.requestPermission();
+        }
+        if (perm !== 'granted') {
+          toast('PWA installed. To get notifications when the app is closed, allow notifications in Chrome settings.', { duration: 6000 });
+          return;
+        }
+        // Permission granted → register SW + subscribe + POST to server.
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        await navigator.serviceWorker.ready;
+        const existing = await reg.pushManager.getSubscription();
+        if (!existing) {
+          const res = await fetch('/api/push/subscribe');
+          const { vapidPublicKey } = await res.json();
+          const keyBytes = urlBase64ToUint8Array(vapidPublicKey);
+          const sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: keyBytes,
+          });
+          if (currentUser) {
+            await fetch('/api/push/subscribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
+              body: JSON.stringify({ subscription: sub }),
+            });
+          }
+        }
+        setPushState('active');
+        toast('App installed. You will now receive notifications even when the app is closed.', {
+          duration: 5000,
+          style: { background: '#16A34A', color: '#fff', fontWeight: 600 },
+        });
+        // Play the chime once so the user knows what to expect.
+        playNotifSound();
+      } catch (e) {
+        console.warn('[push] post-install enable failed:', e);
+      }
     };
     window.addEventListener('beforeinstallprompt', onBeforeInstall);
     window.addEventListener('appinstalled', onInstalled);
@@ -284,7 +337,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       window.removeEventListener('beforeinstallprompt', onBeforeInstall);
       window.removeEventListener('appinstalled', onInstalled);
     };
-  }, []);
+  }, [currentUser, playNotifSound]);
 
   // Detect iOS Safari so we can show the "Add to Home Screen" hint button.
   // iOS Safari never fires `beforeinstallprompt`, so without this hint iOS
