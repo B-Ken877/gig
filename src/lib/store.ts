@@ -172,6 +172,10 @@ interface UISlice {
   toasts: ToastMessage[];
   addToast: (toast: Omit<ToastMessage, 'id'>) => void;
   removeToast: (id: string) => void;
+  // Notification sound preference: 'on' = play chime on new push/in-app notif, 'off' = muted.
+  // Persisted in localStorage so the user's choice survives reloads.
+  notifSoundPref: 'on' | 'off';
+  setNotifSoundPref: (pref: 'on' | 'off') => void;
 }
 
 const createUISlice = (
@@ -190,6 +194,8 @@ const createUISlice = (
     setTimeout(() => { get().removeToast(id); }, 5000);
   },
   removeToast: (id: string) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  notifSoundPref: 'on',
+  setNotifSoundPref: (pref) => set(() => ({ notifSoundPref: pref })),
 });
 
 type DataCacheKey = 'agents' | 'clients' | 'jobPosts' | 'callCenterNeeds' | 'paymentRequests' | 'notifications' | 'auditLogs';
@@ -228,6 +234,7 @@ export const useAppStore = create<AppStore>()(
         isAuthenticated: state.isAuthenticated,
         currentPage: state.currentPage,
         previousPages: state.previousPages,
+        notifSoundPref: state.notifSoundPref,
       }),
     }
   )

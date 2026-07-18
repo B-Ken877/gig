@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { VerifiedBadge, VerifiedBadgeStyles, topVerificationTier, type VerificationTier } from '@/components/ui/verified-badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, Star } from 'lucide-react';
+import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, Star, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavItem { label: string; page: PageType; icon: React.ElementType; }
@@ -64,15 +64,63 @@ function getPageTitle(page: PageType): string {
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const [displayName, setDisplayName] = useState<string | null>(null);
-  const { currentUser, currentPage, sidebarOpen, setSidebarOpen, navigateTo, logout, notifications, updateCurrentUser } = useAppStore();
+  const { currentUser, currentPage, sidebarOpen, setSidebarOpen, navigateTo, logout, notifications, updateCurrentUser, notifSoundPref, setNotifSoundPref } = useAppStore();
   const role = (currentUser?.role || 'visitor') as string;
   const navItems = (NAV_CONFIG[role] || []) as NavItem[];
   const pageTitle = getPageTitle(currentPage);
   const unreadCount = (notifications || []).filter((n) => !n.isRead).length;
   const notifPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dismissedRef = useRef<Set<string>>(new Set());
+  // Tracks IDs we've already seen during notification polling. Initialized to
+  // `null` so the FIRST poll seeds the set silently (we don't want to blast the
+  // chime the moment the user opens the app for notifications that arrived
+  // while they were away — that's a separate "unread banner" concern).
+  const seenNotifIdsRef = useRef<Set<string> | null>(null);
+  // Single reused Audio element — reusing avoids re-fetching the MP3 on every
+  // chime and lets the browser pre-buffer it.
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => { if (window.innerWidth < 1024) setSidebarOpen(false); }, [currentPage, setSidebarOpen]);
+
+  // Pre-load the notification chime once on mount so the first play is instant
+  // (no network round-trip after a push arrives).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const a = new Audio('/sounds/notification.mp3');
+      a.preload = 'auto';
+      a.volume = 0.55;
+      audioRef.current = a;
+    } catch (_) { /* ignore */ }
+    return () => { audioRef.current = null; };
+  }, []);
+
+  // Play the notification chime — but only if the user hasn't muted it.
+  // Wrapped in useCallback so it can be a stable dependency for other effects.
+  const playNotifSound = useCallback(() => {
+    if (notifSoundPref !== 'on') return;
+    try {
+      const a = audioRef.current;
+      if (!a) return;
+      // Reset to start in case the previous play is still fading out.
+      a.currentTime = 0;
+      a.volume = 0.55;
+      const p = a.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {}); // ignore autoplay rejection
+    } catch (_) { /* best-effort */ }
+  }, [notifSoundPref]);
+
+  // Listen for messages from the service worker. The SW fires this whenever a
+  // real web-push arrives so the page can play the chime (SW itself can't play
+  // <audio> — no DOM access).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    const handler = (event: MessageEvent) => {
+      if (event?.data?.type === 'PLAY_NOTIF_SOUND') playNotifSound();
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  }, [playNotifSound]);
 
   // Browser push notification subscription
   useEffect(() => {
@@ -96,15 +144,33 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   }, [currentUser]);
 
   // Fetch in-app notifications (immediate + poll every 15s)
-  // Dismissed notifications are tracked in dismissedRef and filtered out on each poll
+  // Dismissed notifications are tracked in dismissedRef and filtered out on each poll.
+  // New notifications (IDs we haven't seen before across polls) trigger the chime —
+  // EXCEPT on the very first poll after mount, which seeds the seen-set silently
+  // so we don't blast sound for unread notifications that arrived while the user
+  // was away from the app.
   useEffect(() => {
     if (!currentUser) return;
+    // Reset the seen-set whenever the user changes (login/logout switch).
+    seenNotifIdsRef.current = null;
     const fetchNotifs = () => {
       fetch('/api/notifications?userId=' + currentUser.id)
         .then(r => r.json())
         .then(data => {
           if (Array.isArray(data)) {
             const filtered = data.filter((n: any) => !dismissedRef.current.has(n.id));
+            // Detect brand-new IDs vs. previously-seen ones.
+            const seen = seenNotifIdsRef.current;
+            if (seen === null) {
+              // First poll — seed silently.
+              seenNotifIdsRef.current = new Set(filtered.map((n: any) => n.id));
+            } else {
+              const newOnes = filtered.filter((n: any) => !seen.has(n.id));
+              if (newOnes.length > 0) {
+                newOnes.forEach((n: any) => seen.add(n.id));
+                playNotifSound();
+              }
+            }
             useAppStore.getState().setData('notifications', filtered);
           }
         })
@@ -113,7 +179,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     fetchNotifs();
     notifPollRef.current = setInterval(fetchNotifs, 15000);
     return () => { if (notifPollRef.current) clearInterval(notifPollRef.current); };
-  }, [currentUser]);
+  }, [currentUser, playNotifSound]);
 
   const markSingleRead = useCallback(async (notifId: string) => {
     if (!currentUser) return;
@@ -200,6 +266,16 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </ScrollArea>
         <div className="px-3 pb-3">
           <Separator className="bg-white/10 mb-3" />
+          <button
+            onClick={() => setNotifSoundPref(notifSoundPref === 'on' ? 'off' : 'on')}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:bg-white/8 hover:text-white transition-colors w-full text-left mb-1"
+            title={notifSoundPref === 'on' ? 'Mute notification sounds' : 'Unmute notification sounds'}
+          >
+            {notifSoundPref === 'on'
+              ? <Volume2 className="h-4 w-4 shrink-0" />
+              : <VolumeX className="h-4 w-4 shrink-0" />}
+            <span>{notifSoundPref === 'on' ? 'Sound On' : 'Sound Muted'}</span>
+          </button>
           <button onClick={() => navigateTo('home')} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:bg-white/8 hover:text-white transition-colors w-full text-left">
             <ArrowLeft className="h-4 w-4 shrink-0" /><span>Back to Website</span>
           </button>
