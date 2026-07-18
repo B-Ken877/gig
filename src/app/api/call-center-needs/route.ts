@@ -20,8 +20,20 @@ function parseRequirements(raw: string): string[] {
 
 export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    // Optional filter: when a call center opens their "My Staffing Needs"
+    // page, they should only see THEIR own needs — not every other call
+    // center's. Pass ?userId=<their-user-id> to filter.
+    // When omitted (e.g. agents browsing the public listing), all active
+    // needs are returned.
+    const userId = searchParams.get('userId');
+
     const needs = await db.callCenterNeed.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        // When userId is provided, scope to that user's client record.
+        ...(userId ? { client: { userId } } : {}),
+      },
       // Include the client's user.avatar so agents see the call center's
       // profile picture alongside the need.
       include: {

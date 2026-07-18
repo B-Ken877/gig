@@ -145,10 +145,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   // Fetch in-app notifications (immediate + poll every 15s)
   // Dismissed notifications are tracked in dismissedRef and filtered out on each poll.
-  // New notifications (IDs we haven't seen before across polls) trigger the chime —
-  // EXCEPT on the very first poll after mount, which seeds the seen-set silently
-  // so we don't blast sound for unread notifications that arrived while the user
-  // was away from the app.
+  // New notifications (IDs we haven't seen before across polls) trigger the chime.
+  // On the first poll after login, if there are unread notifications, the chime
+  // ALSO plays — so users who were away when a notification arrived still get
+  // alerted when they open the app.
   useEffect(() => {
     if (!currentUser) return;
     // Reset the seen-set whenever the user changes (login/logout switch).
@@ -162,8 +162,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             // Detect brand-new IDs vs. previously-seen ones.
             const seen = seenNotifIdsRef.current;
             if (seen === null) {
-              // First poll — seed silently.
+              // First poll after login. Seed the seen-set with current IDs
+              // AND play the chime if there are any unread notifications —
+              // this ensures users who were away when a notification arrived
+              // still get alerted when they open the app.
               seenNotifIdsRef.current = new Set(filtered.map((n: any) => n.id));
+              if (filtered.length > 0) {
+                playNotifSound();
+              }
             } else {
               const newOnes = filtered.filter((n: any) => !seen.has(n.id));
               if (newOnes.length > 0) {

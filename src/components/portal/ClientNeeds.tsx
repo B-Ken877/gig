@@ -25,7 +25,10 @@ export default function ClientNeeds() {
   const [loading, setLoading] = useState(false);
 
   const load = () => {
-    fetch('/api/call-center-needs')
+    // Pass userId so the API scopes to THIS call center's own needs only.
+    // Without this, every call center sees every other call center's needs
+    // on their "My Staffing Needs" page.
+    fetch('/api/call-center-needs?userId=' + currentUser!.id)
       .then(r => r.json())
       .then(d => {
         if (Array.isArray(d.needs)) {
