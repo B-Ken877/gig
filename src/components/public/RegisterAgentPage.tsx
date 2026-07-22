@@ -84,7 +84,7 @@ export default function RegisterAgentPage() {
     if (!validate()) return;
     setLoading(true);
     try {
-      const result = await register({
+      await register({
         name: form.fullName,
         email: form.email,
         phone: form.phone,
@@ -99,17 +99,14 @@ export default function RegisterAgentPage() {
         },
       });
 
-      if (result.requiresApproval) {
-        try {
-          await login(form.email, form.password);
-        } catch(loginErr) {
-          addToast({ title: 'Account created!', description: 'Please sign in to complete your payment.', variant: 'success' });
-          navigateTo('login');
-          return;
-        }
-        addToast({ title: 'Account created!', description: 'Please complete your onboarding payment to activate your account.', variant: 'success' });
-        navigateTo('pending-payment');
-        return;
+      // Free registration — try to auto-login and redirect to dashboard.
+      try {
+        await login(form.email, form.password);
+        addToast({ title: 'Welcome aboard!', description: 'Your agent account is ready. You can browse jobs and message other agents for free.', variant: 'success' });
+        navigateTo('agent-dashboard');
+      } catch (loginErr) {
+        addToast({ title: 'Account created!', description: 'Please sign in to continue.', variant: 'success' });
+        navigateTo('login');
       }
     } catch (err) {
       addToast({ title: 'Registration failed', description: err instanceof Error ? err.message : 'Something went wrong. Please try again.', variant: 'destructive' });
@@ -151,9 +148,9 @@ export default function RegisterAgentPage() {
           </div>
           <h1 className="text-2xl font-bold tracking-wide text-white">Register as Agent</h1>
           <p className="mt-2 text-sm text-gray-400">Create your account to find call center opportunities</p>
-          <div className="mt-3 inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-1.5">
-            <Shield className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-amber-300 text-sm font-medium">Annual onboarding fee: <strong className="text-white">2,000 HTG/year</strong></span>
+          <div className="mt-3 inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-4 py-1.5">
+            <Shield className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-emerald-300 text-sm font-medium">Free to register · <strong className="text-white">1,000 HTG / 3 months</strong> when you apply for a job</span>
           </div>
         </div>
 

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ClipboardList, CheckCircle2, XCircle, Clock, Send, MessageCircle, User, ChevronDown, ChevronUp, ChevronLeft } from 'lucide-react';
+import { ClipboardList, CheckCircle2, XCircle, Clock, Send, MessageCircle, User, ChevronDown, ChevronUp, ChevronLeft, RotateCcw, Ban } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface Ticket {
@@ -32,14 +32,14 @@ export default function TicketsPage() {
   const { currentUser, addToast } = useAppStore();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'open' | 'closed'>('all');
+  const [activeTab, setActiveTab] = useState<'open' | 'closed'>('open');
   const [expandedTicket, setExpandedTicket] = useState<string | null>(null);
   const [chatTicket, setChatTicket] = useState<Ticket | null>(null);
   const [chatMessages, setChatMessages] = useState<TicketMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
-  const [closing, setClosing] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -60,7 +60,7 @@ export default function TicketsPage() {
 
   // Poll for new messages while chat is open
   useEffect(() => {
-    if (!chatTicket || chatTicket.status === 'closed') {
+    if (!chatTicket) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       return;
     }
@@ -88,21 +88,51 @@ export default function TicketsPage() {
   };
 
   const closeTicket = async (ticketId: string) => {
-    setClosing(ticketId);
+    setActionLoading(ticketId);
     try {
       const res = await authFetch('/api/support-tickets', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: ticketId, status: 'closed' }),
       });
       if (res.ok) {
-        addToast({ title: 'Ticket Closed', description: 'Ticket has been resolved.', variant: 'success' });
+        addToast({ title: 'Ticket Closed', description: 'Ticket has been resolved and closed.', variant: 'success' });
         fetchTickets();
-        if (chatTicket && chatTicket.id === ticketId) setChatTicket(prev => prev ? { ...prev, status: 'closed' } : null);
+        if (chatTicket && chatTicket.id === ticketId) {
+          setChatTicket(prev => prev ? { ...prev, status: 'closed' } : null);
+        }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        addToast({ title: 'Error', description: data.error || 'Failed to close ticket', variant: 'destructive' });
       }
     } catch {
-      addToast({ title: 'Error', description: 'Failed to close ticket', variant: 'destructive' });
+      addToast({ title: 'Error', description: 'Network error. Please try again.', variant: 'destructive' });
     }
-    setClosing(null);
+    setActionLoading(null);
+  };
+
+  const reopenTicket = async (ticketId: string) => {
+    setActionLoading(ticketId);
+    try {
+      const res = await authFetch('/api/support-tickets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: ticketId, status: 'open' }),
+      });
+      if (res.ok) {
+        addToast({ title: 'Ticket Reopened', description: 'Ticket has been reopened.', variant: 'success' });
+        fetchTickets();
+        if (chatTicket && chatTicket.id === ticketId) {
+          setChatTicket(prev => prev ? { ...prev, status: 'open' } : null);
+        }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        addToast({ title: 'Error', description: data.error || 'Failed to reopen ticket', variant: 'destructive' });
+      }
+    } catch {
+      addToast({ title: 'Error', description: 'Network error. Please try again.', variant: 'destructive' });
+    }
+    setActionLoading(null);
   };
 
   const sendMessage = async () => {
@@ -119,6 +149,9 @@ export default function TicketsPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.message) setChatMessages(prev => [...prev, data.message]);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        addToast({ title: 'Error', description: data.error || 'Failed to send message', variant: 'destructive' });
       }
     } catch {
       addToast({ title: 'Error', description: 'Failed to send message', variant: 'destructive' });
@@ -134,11 +167,15 @@ export default function TicketsPage() {
     fetchTickets();
   };
 
-  const filtered = filter === 'all' ? tickets : tickets.filter(t => t.status === filter);
-  const openCount = tickets.filter(t => t.status === 'open').length;
-  const closedCount = tickets.filter(t => t.status === 'closed').length;
+  const openTickets = tickets.filter(t => t.status === 'open');
+  const closedTickets = tickets.filter(t => t.status === 'closed');
+  const displayedTickets = activeTab === 'open' ? openTickets : closedTickets;
 
-  if (loading) return <div className="flex items-center justify-center py-16"><div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
+  if (loading) return (
+    <div className="flex items-center justify-center py-16">
+      <div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" />
+    </div>
+  );
 
   // ========== CHAT VIEW ==========
   if (chatTicket) {
@@ -152,16 +189,36 @@ export default function TicketsPage() {
             <h3 className="text-sm font-semibold text-gray-900 truncate">{chatTicket.subject}</h3>
             <p className="text-xs text-gray-500">from {chatTicket.user?.name || 'User'} ({chatTicket.user?.role?.replace('_', ' ') || ''})</p>
           </div>
-          {chatTicket.status === 'open' && (
-            <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => closeTicket(chatTicket.id)} disabled={closing === chatTicket.id}>
-              {closing === chatTicket.id ? 'Closing...' : 'Close Ticket'}
+          {chatTicket.status === 'open' ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-red-600 border-red-200 hover:bg-red-50 gap-1"
+              onClick={() => closeTicket(chatTicket.id)}
+              disabled={actionLoading === chatTicket.id}
+            >
+              <Ban className="h-3.5 w-3.5" />
+              {actionLoading === chatTicket.id ? 'Closing...' : 'Close Ticket'}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-green-600 border-green-200 hover:bg-green-50 gap-1"
+              onClick={() => reopenTicket(chatTicket.id)}
+              disabled={actionLoading === chatTicket.id}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              {actionLoading === chatTicket.id ? 'Reopening...' : 'Reopen Ticket'}
             </Button>
           )}
         </div>
+
         <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <CardContent className="flex-1 flex flex-col p-0 min-h-0">
             <ScrollArea className="flex-1 min-h-0">
               <div className="p-4 space-y-3">
+                {/* Ticket description as first message */}
                 <div className="flex justify-start">
                   <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm bg-blue-50 border border-blue-100 text-gray-700">
                     <p className="text-[10px] font-semibold mb-0.5 text-blue-600">Ticket Description</p>
@@ -171,18 +228,25 @@ export default function TicketsPage() {
                     </p>
                   </div>
                 </div>
+
                 {chatMessages.length === 0 && !chatLoading && (
                   <div className="text-center py-8">
                     <MessageCircle className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                     <p className="text-xs text-gray-400">No messages yet. Start the conversation.</p>
                   </div>
                 )}
+
                 {chatMessages.map(m => {
                   const isMe = m.senderId === currentUser?.id;
+                  const senderLabel = isMe
+                    ? 'You (Admin)'
+                    : chatTicket.user?.name || 'User';
                   return (
                     <div key={m.id} className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
                       <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5 text-sm', isMe ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-800')}>
-                        {!isMe && <p className="text-[10px] font-semibold mb-0.5 text-gray-500">{chatTicket.user?.name || 'User'}</p>}
+                        {!isMe && (
+                          <p className="text-[10px] font-semibold mb-0.5 text-gray-500">{senderLabel}</p>
+                        )}
                         <p className="whitespace-pre-wrap break-words">{m.content}</p>
                         <p className={cn('text-[10px] mt-1', isMe ? 'text-green-100' : 'text-gray-400')}>
                           {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -195,12 +259,14 @@ export default function TicketsPage() {
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
+
+            {/* Chat input - always available so admin can reply even on closed tickets (for context) */}
             <div className="border-t p-3 flex gap-2 shrink-0 bg-white">
               <Textarea
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }}}
-                placeholder="Type your reply..."
+                placeholder={chatTicket.status === 'closed' ? 'Reopen ticket to reply...' : 'Type your reply...'}
                 rows={1}
                 className="flex-1 resize-none border-gray-200 text-sm min-h-[40px] h-10 focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
                 disabled={chatTicket.status === 'closed'}
@@ -227,20 +293,48 @@ export default function TicketsPage() {
           <h2 className="text-2xl font-bold text-gray-900">Support Tickets</h2>
           <p className="text-sm text-gray-500 mt-0.5">Manage and respond to support requests from agents and clients.</p>
         </div>
-        <div className="flex gap-2">
-          <Badge variant="secondary" className={cn('cursor-pointer text-xs px-3 py-1 select-none', filter === 'all' && 'bg-green-600 text-white')} onClick={() => setFilter('all')}>All ({tickets.length})</Badge>
-          <Badge variant="outline" className={cn('cursor-pointer text-xs px-3 py-1 select-none', filter === 'open' && 'bg-green-100 text-green-700 border-green-300')} onClick={() => setFilter('open')}>{openCount} Open</Badge>
-          <Badge variant="outline" className={cn('cursor-pointer text-xs px-3 py-1 select-none', filter === 'closed' && 'bg-gray-200 text-gray-700')} onClick={() => setFilter('closed')}>{closedCount} Closed</Badge>
-        </div>
       </div>
-      {filtered.length === 0 ? (
-        <Card><CardContent className="p-12 text-center">
-          <ClipboardList className="h-10 w-10 mx-auto mb-3 text-gray-300" />
-          <p className="text-sm text-gray-500">No tickets found.</p>
-        </CardContent></Card>
+
+      {/* Tab buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveTab('open')}
+          className={cn(
+            'px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2',
+            activeTab === 'open'
+              ? 'bg-green-600 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          )}
+        >
+          <CheckCircle2 className="h-4 w-4" />
+          {openTickets.length} Open
+        </button>
+        <button
+          onClick={() => setActiveTab('closed')}
+          className={cn(
+            'px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2',
+            activeTab === 'closed'
+              ? 'bg-gray-700 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          )}
+        >
+          <XCircle className="h-4 w-4" />
+          {closedTickets.length} Closed
+        </button>
+      </div>
+
+      {displayedTickets.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <ClipboardList className="h-10 w-10 mx-auto mb-3 text-gray-300" />
+            <p className="text-sm text-gray-500">
+              {activeTab === 'open' ? 'No open tickets right now.' : 'No closed tickets yet.'}
+            </p>
+          </CardContent>
+        </Card>
       ) : (
         <div className="space-y-3">
-          {filtered.map(ticket => {
+          {displayedTickets.map(ticket => {
             const isExpanded = expandedTicket === ticket.id;
             return (
               <Card key={ticket.id}>
@@ -262,15 +356,35 @@ export default function TicketsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {ticket.status === 'open' && (
-                        <>
-                          <Button size="sm" onClick={() => openChat(ticket)} className="h-8 text-xs bg-green-600 text-white hover:bg-green-700 gap-1">
-                            <MessageCircle className="h-3 w-3" />Chat
-                          </Button>
-                          <Button size="sm" variant="outline" className="h-8 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => closeTicket(ticket.id)} disabled={closing === ticket.id}>
-                            {closing === ticket.id ? '...' : 'Close'}
-                          </Button>
-                        </>
+                      <Button
+                        size="sm"
+                        onClick={() => openChat(ticket)}
+                        className="h-8 text-xs bg-green-600 text-white hover:bg-green-700 gap-1"
+                      >
+                        <MessageCircle className="h-3 w-3" />Chat
+                      </Button>
+                      {ticket.status === 'open' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs text-red-600 border-red-200 hover:bg-red-50 gap-1"
+                          onClick={() => closeTicket(ticket.id)}
+                          disabled={actionLoading === ticket.id}
+                        >
+                          <Ban className="h-3 w-3" />
+                          {actionLoading === ticket.id ? '...' : 'Close'}
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs text-green-600 border-green-200 hover:bg-green-50 gap-1"
+                          onClick={() => reopenTicket(ticket.id)}
+                          disabled={actionLoading === ticket.id}
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          {actionLoading === ticket.id ? '...' : 'Reopen'}
+                        </Button>
                       )}
                       <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setExpandedTicket(isExpanded ? null : ticket.id)}>
                         {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}

@@ -11,6 +11,7 @@ import ForClientsPage from '@/components/public/ForClientsPage';
 import CareersPage from '@/components/public/CareersPage';
 import AboutPage from '@/components/public/AboutPage';
 import ContactPage from '@/components/public/ContactPage';
+import AcademyPage from '@/components/public/AcademyPage';
 import LoginPage from '@/components/public/LoginPage';
 import RegisterAgentPage from '@/components/public/RegisterAgentPage';
 import RegisterClientPage from '@/components/public/RegisterClientPage';
@@ -33,7 +34,11 @@ import SupportPage from '@/components/portal/SupportPage';
 import TicketsPage from '@/components/portal/TicketsPage';
 import PendingPaymentPage from '@/components/portal/PendingPaymentPage';
 import MessagesPage from '@/components/portal/MessagesPage';
+import GroupChatPage from '@/components/portal/GroupChatPage';
 import ReviewsPage from '@/components/portal/ReviewsPage';
+import GigAITrainingPage from '@/components/portal/GigAITrainingPage';
+import MarketplacePage from '@/components/portal/MarketplacePage';
+import AdminProducts from '@/components/portal/AdminProducts';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -44,7 +49,7 @@ const PORTAL_PAGES = new Set<PageType>([
   'agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications',
   'client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile',
   'admin-dashboard','admin-users','admin-job-posts',
-  'payment-taker-dashboard','messages','support','tickets','reviews',
+  'payment-taker-dashboard','messages','group-chat','support','tickets','reviews','ai-training','marketplace','admin-products',
 ]);
 
 function PublicRouter() {
@@ -60,6 +65,7 @@ function PublicRouter() {
         {currentPage === 'careers' && <CareersPage />}
         {currentPage === 'about' && <AboutPage />}
         {currentPage === 'contact' && <ContactPage />}
+        {currentPage === 'academy' && <AcademyPage />}
         {currentPage === 'login' && <LoginPage />}
         {currentPage === 'register-agent' && <RegisterAgentPage />}
         {currentPage === 'register-client' && <RegisterClientPage />}
@@ -133,9 +139,14 @@ export default function Home() {
 
   const isPortal = PORTAL_PAGES.has(currentPage);
   const isPendingPayment = currentPage === 'pending-payment';
+  // DUAL-MODE: Academy renders inside PortalLayout if the user is
+  // authenticated (so the sidebar + header + notifications stay
+  // visible when they click Academy from the hamburger menu). For
+  // visitors, it falls through to PublicRouter (navbar + footer).
+  const isAcademyPortal = currentPage === 'academy' && isAuthenticated;
 
   let page;
-  if (isPortal) {
+  if (isPortal || isAcademyPortal) {
     if (!isAuthenticated) {
       page = (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0B1A2E] to-[#0B1A2E]/80 p-4">
@@ -181,10 +192,15 @@ export default function Home() {
             {currentPage === 'admin-job-posts' && <AdminJobPosts />}
             {currentPage === 'payment-taker-dashboard' && <PaymentTakerDashboard />}
             {currentPage === 'messages' && <MessagesPage />}
+            {currentPage === 'group-chat' && <GroupChatPage />}
+            {currentPage === 'reviews' && <ReviewsPage />}
             {currentPage === 'support' && <SupportPage />}
             {currentPage === 'tickets' && <TicketsPage />}
-            {currentPage === 'reviews' && <ReviewsPage />}
-          </PortalLayout>
+            {currentPage === 'academy' && <AcademyPage />}
+            {currentPage === 'ai-training' && <GigAITrainingPage />}
+            {currentPage === 'marketplace' && <MarketplacePage />}
+            {currentPage === 'admin-products' && <AdminProducts />}
+                                  </PortalLayout>
         </>
       );
     }

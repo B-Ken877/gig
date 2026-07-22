@@ -40,15 +40,25 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import {
+  VerifiedBadge,
+  VerifiedBadgeStyles,
+  topVerificationTier,
+  type VerificationTier,
+} from '@/components/ui/verified-badge';
+import { UserProfileModal } from '@/components/ui/user-profile-modal';
 
 // ──────────────────────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────────────────────
 
 interface OtherUser {
+  id?: string | null;
   name: string;
   role: string;
   avatar?: string | null;
+  verificationTiers?: string[] | null;
+  verifiedAt?: string | null;
 }
 
 interface LatestMessage {
@@ -92,6 +102,9 @@ interface SearchableUser {
   companyName?: string | null;
   industry?: string | null;
   displayName?: string | null;
+  // Verification badges (so the new-conversation dialog can show the seal)
+  verificationTiers?: string[] | null;
+  verifiedAt?: string | null;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -120,16 +133,20 @@ const ROLE_ICONS: Record<string, React.ElementType> = {
 };
 
 // Determine which roles the current user can message
+// ──────────────────────────────────────────────────────
+// RULE (per product spec):
+//   - Agents can ONLY message other agents (and admin for support).
+//     They must NOT be able to contact call centers via "New Message".
+//     Agents reach call centers only by applying to a job posting,
+//     which creates a conversation implicitly — but they cannot start
+//     a new one manually from the dialog.
+//   - Call centers can message agents, admins, and other call centers.
+//   - Admin can message everyone.
 function getAllowedRoles(myRole: string): string[] {
-  const all = ['admin', 'recruiter', 'operations', 'client', 'agent'];
-  if (myRole === 'admin') return all;
-  return all.filter(r => {
-    if (r === myRole) return false; // can't message self-role is fine, just not self
-    // Block client ↔ agent
-    if (myRole === 'client' && r === 'agent') return false;
-    if (myRole === 'agent' && r === 'client') return false;
-    return true;
-  });
+  if (myRole === 'admin') return ['admin', 'client', 'agent', 'payment_taker'];
+  if (myRole === 'agent') return ['agent']; // ← AGENTS SEE AGENTS ONLY
+  if (myRole === 'client') return ['admin', 'agent', 'client'];
+  return ['admin', 'agent', 'client'];
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -259,6 +276,7 @@ interface NewConversationDialogProps {
   onOpenChange: (open: boolean) => void;
   myRole: string;
   onSelect: (recipientUserId: string) => void;
+  onShowProfile?: (userId: string) => void;
 }
 
 function NewConversationDialog({
@@ -266,6 +284,7 @@ function NewConversationDialog({
   onOpenChange,
   myRole,
   onSelect,
+  onShowProfile,
 }: NewConversationDialogProps) {
   const [search, setSearch] = useState('');
   const [users, setUsers] = useState<SearchableUser[]>([]);
@@ -333,6 +352,7 @@ function NewConversationDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg">
+        <VerifiedBadgeStyles />
         <DialogHeader>
           <DialogTitle>New Conversation</DialogTitle>
           <DialogDescription>
@@ -407,27 +427,46 @@ function NewConversationDialog({
               {filtered.map((user) => {
                 const RoleIcon = ROLE_ICONS[user.role] || Users;
                 const userDisplayName = user.displayName || (user.role === 'client' && user.companyName ? user.companyName : user.name);
+                const userTiers: VerificationTier[] = (user.verificationTiers || []) as VerificationTier[];
+                const userTopTier = topVerificationTier(userTiers);
                 return (
-                  <button
+                  <div
                     key={user.id}
                     onClick={() => {
                       onSelect(user.id);
                       onOpenChange(false);
                       setSearch('');
                     }}
-                    className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-gray-50"
+                    className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-gray-50 cursor-pointer"
                   >
-                    <Avatar className="h-9 w-9">
-                      {user.avatar && <AvatarImage src={user.avatar} alt={userDisplayName} />}
-                      <AvatarFallback className="bg-gray-200 text-gray-600 text-xs font-medium">
-                        {getInitials(userDisplayName)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onShowProfile?.(user.id); }}
+                      className="relative shrink-0 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+                      title="View full profile"
+                    >
+                      <Avatar className="h-9 w-9">
+                        {user.avatar && <AvatarImage src={user.avatar} alt={userDisplayName} />}
+                        <AvatarFallback className="bg-gray-200 text-gray-600 text-xs font-medium">
+                          {getInitials(userDisplayName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      {userTopTier && (
+                        <span className="absolute -bottom-1 -right-1">
+                          <VerifiedBadge tier={userTopTier} iconOnly size="xs" verifiedAt={user.verifiedAt} />
+                        </span>
+                      )}
+                    </button>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-medium text-gray-900">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onShowProfile?.(user.id); }}
+                          className="truncate text-sm font-medium text-gray-900 hover:text-[#16A34A] hover:underline cursor-pointer"
+                          title="View full profile"
+                        >
                           {userDisplayName}
-                        </p>
+                        </button>
                         <Badge className={cn('shrink-0 text-[10px] px-1.5 py-0 h-4 font-medium', ROLE_COLORS[user.role] || 'bg-gray-100 text-gray-600')}>
                           <RoleIcon className="h-2.5 w-2.5 mr-0.5" />
                           {ROLE_LABELS[user.role] || user.role}
@@ -435,7 +474,7 @@ function NewConversationDialog({
                       </div>
                       <p className="truncate text-xs text-gray-500">{user.email}</p>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -454,9 +493,12 @@ interface MessageBubbleProps {
   message: Message;
   isOwn: boolean;
   otherUser: OtherUser;
+  onShowProfile?: (userId: string) => void;
 }
 
-function MessageBubble({ message, isOwn, otherUser }: MessageBubbleProps) {
+function MessageBubble({ message, isOwn, otherUser, onShowProfile }: MessageBubbleProps) {
+  const otherTiers: VerificationTier[] = (otherUser.verificationTiers || []) as VerificationTier[];
+  const otherTopTier = topVerificationTier(otherTiers);
   return (
     <motion.div
       initial={{ opacity: 0, y: 12, scale: 0.97 }}
@@ -465,12 +507,24 @@ function MessageBubble({ message, isOwn, otherUser }: MessageBubbleProps) {
       className={cn('flex gap-2', isOwn ? 'flex-row-reverse' : 'flex-row')}
     >
       {!isOwn && (
-        <Avatar className="mt-auto h-8 w-8 shrink-0">
-          {otherUser.avatar && <AvatarImage src={otherUser.avatar} />}
-          <AvatarFallback className="bg-gray-200 text-gray-600 text-xs font-medium">
-            {getInitials(otherUser.name)}
-          </AvatarFallback>
-        </Avatar>
+        <button
+          type="button"
+          onClick={() => onShowProfile?.((otherUser as any).id)}
+          className="relative mt-auto shrink-0 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          title="View full profile"
+        >
+          <Avatar className="h-8 w-8">
+            {otherUser.avatar && <AvatarImage src={otherUser.avatar} />}
+            <AvatarFallback className="bg-gray-200 text-gray-600 text-xs font-medium">
+              {getInitials(otherUser.name)}
+            </AvatarFallback>
+          </Avatar>
+          {otherTopTier && (
+            <span className="absolute -bottom-1 -right-1">
+              <VerifiedBadge tier={otherTopTier} iconOnly size="xs" verifiedAt={otherUser.verifiedAt} />
+            </span>
+          )}
+        </button>
       )}
 
       <div
@@ -481,7 +535,14 @@ function MessageBubble({ message, isOwn, otherUser }: MessageBubbleProps) {
       >
         {!isOwn && (
           <div className="mb-1 flex items-center gap-1.5 px-1">
-            <p className="text-xs font-medium text-gray-500">{otherUser.name}</p>
+            <button
+              type="button"
+              onClick={() => onShowProfile?.((otherUser as any).id)}
+              className="text-xs font-medium text-gray-500 hover:text-[#16A34A] hover:underline cursor-pointer"
+              title="View full profile"
+            >
+              {otherUser.name}
+            </button>
             <Badge className={cn('text-[10px] px-1.5 py-0 h-3.5 font-medium leading-none', ROLE_COLORS[otherUser.role] || 'bg-gray-100 text-gray-600')}>
               {ROLE_LABELS[otherUser.role] || otherUser.role}
             </Badge>
@@ -523,51 +584,70 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onClick: () => void;
+  onShowProfile?: (userId: string) => void;
 }
 
 function ConversationItem({
   conversation,
   isActive,
   onClick,
+  onShowProfile,
 }: ConversationItemProps) {
   const { otherUser, latestMessage, unreadCount, lastMessageAt } = conversation;
   const RoleIcon = ROLE_ICONS[otherUser.role] || Users;
+  const otherTiers: VerificationTier[] = (otherUser.verificationTiers || []) as VerificationTier[];
+  const otherTopTier = topVerificationTier(otherTiers);
 
   return (
-    <button
+    <div
       onClick={onClick}
       className={cn(
-        'flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors',
+        'flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors cursor-pointer',
         isActive
           ? 'border-l-4 border-green-500 bg-green-50'
           : 'border-l-4 border-transparent hover:bg-gray-50',
       )}
     >
-      <Avatar className="h-11 w-11 shrink-0">
-        {otherUser.avatar && <AvatarImage src={otherUser.avatar} />}
-        <AvatarFallback
-          className={cn(
-            'text-sm font-semibold',
-            isActive
-              ? 'bg-green-200 text-green-800'
-              : 'bg-gray-200 text-gray-600',
-          )}
-        >
-          {getInitials(otherUser.name)}
-        </AvatarFallback>
-      </Avatar>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onShowProfile?.((otherUser as any).id); }}
+        className="relative shrink-0 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+        title="View full profile"
+      >
+        <Avatar className="h-11 w-11">
+          {otherUser.avatar && <AvatarImage src={otherUser.avatar} />}
+          <AvatarFallback
+            className={cn(
+              'text-sm font-semibold',
+              isActive
+                ? 'bg-green-200 text-green-800'
+                : 'bg-gray-200 text-gray-600',
+            )}
+          >
+            {getInitials(otherUser.name)}
+          </AvatarFallback>
+        </Avatar>
+        {otherTopTier && (
+          <span className="absolute -bottom-1 -right-1">
+            <VerifiedBadge tier={otherTopTier} iconOnly size="xs" verifiedAt={otherUser.verifiedAt} />
+          </span>
+        )}
+      </button>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
-            <p
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onShowProfile?.((otherUser as any).id); }}
               className={cn(
-                'truncate text-sm font-semibold',
-                isActive ? 'text-green-900' : 'text-gray-900',
+                'truncate text-sm font-semibold hover:underline cursor-pointer',
+                isActive ? 'text-green-900 hover:text-green-700' : 'text-gray-900 hover:text-[#16A34A]',
               )}
+              title="View full profile"
             >
               {otherUser.name}
-            </p>
+            </button>
             <RoleIcon className={cn('h-3 w-3 shrink-0', isActive ? 'text-green-600' : 'text-gray-400')} />
           </div>
           {lastMessageAt && (
@@ -597,7 +677,7 @@ function ConversationItem({
           )}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -632,6 +712,9 @@ export default function MessagesPage() {
 
   // Other user info for active conversation
   const [activeOtherUser, setActiveOtherUser] = useState<OtherUser | null>(null);
+
+  // ── Profile modal target (click name/avatar → full profile) ──
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -864,6 +947,7 @@ export default function MessagesPage() {
 
   return (
     <div className="space-y-4">
+      <VerifiedBadgeStyles />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -927,6 +1011,7 @@ export default function MessagesPage() {
                         conversation={conv}
                         isActive={conv.id === activeConvId}
                         onClick={() => handleSelectConversation(conv)}
+                        onShowProfile={setProfileUserId}
                       />
                     ))}
                   </AnimatePresence>
@@ -968,19 +1053,41 @@ export default function MessagesPage() {
                     <ArrowLeft className="h-5 w-5" />
                   </Button>
 
-                  <Avatar className="h-9 w-9 shrink-0">
-                    {activeOtherUser?.avatar && (
-                      <AvatarImage src={activeOtherUser.avatar} />
+                  <button
+                    type="button"
+                    onClick={() => activeOtherUser && setProfileUserId((activeOtherUser as any).id)}
+                    className="relative shrink-0 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+                    title="View full profile"
+                  >
+                    <Avatar className="h-9 w-9">
+                      {activeOtherUser?.avatar && (
+                        <AvatarImage src={activeOtherUser.avatar} />
+                      )}
+                      <AvatarFallback className="bg-green-100 text-green-700 text-sm font-semibold">
+                        {activeOtherUser ? getInitials(activeOtherUser.name) : '?'}
+                      </AvatarFallback>
+                    </Avatar>
+                    {activeOtherUser && topVerificationTier((activeOtherUser.verificationTiers || []) as VerificationTier[]) && (
+                      <span className="absolute -bottom-1 -right-1">
+                        <VerifiedBadge
+                          tier={topVerificationTier((activeOtherUser.verificationTiers || []) as VerificationTier[])!}
+                          iconOnly
+                          size="xs"
+                          verifiedAt={activeOtherUser.verifiedAt}
+                        />
+                      </span>
                     )}
-                    <AvatarFallback className="bg-green-100 text-green-700 text-sm font-semibold">
-                      {activeOtherUser ? getInitials(activeOtherUser.name) : '?'}
-                    </AvatarFallback>
-                  </Avatar>
+                  </button>
 
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-gray-900">
+                    <button
+                      type="button"
+                      onClick={() => activeOtherUser && setProfileUserId((activeOtherUser as any).id)}
+                      className="truncate text-sm font-semibold text-gray-900 hover:text-[#16A34A] hover:underline cursor-pointer block w-full text-left"
+                      title="View full profile"
+                    >
                       {activeOtherUser?.name || 'Conversation'}
-                    </p>
+                    </button>
                     {activeOtherUser && (
                       <Badge className={cn('text-[10px] px-1.5 py-0 h-3.5 font-medium leading-none', ROLE_COLORS[activeOtherUser.role] || 'bg-gray-100 text-gray-600')}>
                         {ROLE_LABELS[activeOtherUser.role] || activeOtherUser.role}
@@ -1012,6 +1119,7 @@ export default function MessagesPage() {
                             otherUser={
                               activeOtherUser || { name: 'Unknown', role: 'visitor' }
                             }
+                            onShowProfile={setProfileUserId}
                           />
                         ))}
                       </AnimatePresence>
@@ -1062,6 +1170,12 @@ export default function MessagesPage() {
         onOpenChange={setNewConvOpen}
         myRole={myRole}
         onSelect={handleNewConversation}
+        onShowProfile={setProfileUserId}
+      />
+      <UserProfileModal
+        userId={profileUserId}
+        open={!!profileUserId}
+        onClose={() => setProfileUserId(null)}
       />
     </div>
   );

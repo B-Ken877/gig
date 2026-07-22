@@ -29,16 +29,16 @@ interface TicketMessage {
   createdAt: string;
 }
 
-const SUPPORT_AGENT_ID = 'cmrjo435c0001kqp7e69n63f5';
-
 export default function SupportPage() {
-  const { currentUser, addToast } = useAppStore();
+  const { currentUser, addToast, navigateTo } = useAppStore();
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'payment_taker';
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState<'open' | 'closed'>('open');
 
   // Chat state
   const [chatTicket, setChatTicket] = useState<Ticket | null>(null);
@@ -48,6 +48,13 @@ export default function SupportPage() {
   const [sendingMsg, setSendingMsg] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // If admin, redirect to tickets page immediately
+  useEffect(() => {
+    if (isAdmin) {
+      navigateTo('tickets' as any);
+    }
+  }, [isAdmin, navigateTo]);
 
   const fetchTickets = useCallback(() => {
     if (!currentUser) return;
@@ -60,12 +67,10 @@ export default function SupportPage() {
 
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // Poll for new messages while chat is open
   useEffect(() => {
     if (!chatTicket || chatTicket.status === 'closed') {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -148,6 +153,22 @@ export default function SupportPage() {
     finally { setSubmitting(false); }
   };
 
+  // If admin, show redirect message while redirecting
+  if (isAdmin) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="text-center">
+          <Headphones className="h-10 w-10 mx-auto mb-3 text-gray-300" />
+          <p className="text-sm text-gray-500">Redirecting to Support Tickets...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const openTickets = tickets.filter(t => t.status === 'open');
+  const closedTickets = tickets.filter(t => t.status === 'closed');
+  const displayedTickets = activeTab === 'open' ? openTickets : closedTickets;
+
   // ========== CHAT VIEW ==========
   if (chatTicket) {
     return (
@@ -171,7 +192,6 @@ export default function SupportPage() {
           <CardContent className="flex-1 flex flex-col p-0 min-h-0">
             <ScrollArea className="flex-1 min-h-0">
               <div className="p-4 space-y-3">
-                {/* Show ticket description as first message */}
                 <div className="flex justify-start">
                   <div className="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm bg-blue-50 border border-blue-100 text-gray-700">
                     <p className="text-[10px] font-semibold mb-0.5 text-blue-600">Ticket Description</p>
@@ -240,9 +260,6 @@ export default function SupportPage() {
     return <div className="flex items-center justify-center py-16"><div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
   }
 
-  const openCount = tickets.filter(t => t.status === 'open').length;
-  const closedCount = tickets.filter(t => t.status === 'closed').length;
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -272,9 +289,29 @@ export default function SupportPage() {
         </Card>
       )}
 
-      <div className="flex gap-4">
-        <Badge variant="secondary" className="text-xs px-3 py-1">{openCount} Open</Badge>
-        <Badge variant="outline" className="text-xs px-3 py-1">{closedCount} Closed</Badge>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveTab('open')}
+          className={cn(
+            'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+            activeTab === 'open'
+              ? 'bg-green-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          )}
+        >
+          <CheckCircle2 className="h-4 w-4 inline mr-1.5" />{openTickets.length} Open
+        </button>
+        <button
+          onClick={() => setActiveTab('closed')}
+          className={cn(
+            'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+            activeTab === 'closed'
+              ? 'bg-gray-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          )}
+        >
+          <XCircle className="h-4 w-4 inline mr-1.5" />{closedTickets.length} Closed
+        </button>
       </div>
 
       <Card>
@@ -284,15 +321,17 @@ export default function SupportPage() {
             <h3 className="text-sm font-semibold">Your Tickets</h3>
           </div>
 
-          {tickets.length === 0 ? (
+          {displayedTickets.length === 0 ? (
             <div className="text-center py-12">
               <Headphones className="h-10 w-10 mx-auto mb-3 text-gray-300" />
-              <p className="text-sm text-gray-500">No tickets yet.</p>
-              <p className="text-xs text-gray-400 mt-1">Click &quot;New Ticket&quot; to get help from our support team.</p>
+              <p className="text-sm text-gray-500">{activeTab === 'open' ? 'No open tickets.' : 'No closed tickets.'}</p>
+              {activeTab === 'open' && (
+                <p className="text-xs text-gray-400 mt-1">Click &quot;New Ticket&quot; to get help from our support team.</p>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
-              {tickets.map(ticket => (
+              {displayedTickets.map(ticket => (
                 <div key={ticket.id} className="border rounded-xl p-4 hover:shadow-sm transition-shadow">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">

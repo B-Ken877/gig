@@ -1,11 +1,12 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { User, FileText, Calendar, MessageCircle, ArrowRight, AlertCircle, RefreshCw, Briefcase, MapPin, Clock, Building2, CheckCircle2 } from 'lucide-react';
+import { User, FileText, Calendar, MessageCircle, ArrowRight, AlertCircle, RefreshCw, Briefcase, MapPin, Clock, Building2, CheckCircle2, CreditCard, Lock, ShieldCheck, X } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAppStore } from '@/lib/store';
+import { VerifiedBadge, VerifiedBadgeStyles, VerifiedBadgeStack, topVerificationTier, type VerificationTier } from '@/components/ui/verified-badge';
 
 interface ClientNeed {
   id: string;
@@ -35,6 +36,10 @@ export default function AgentDashboard() {
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
   const [totalApplications, setTotalApplications] = useState(0);
   const [applyingNeed, setApplyingNeed] = useState<string | null>(null);
+  // Payment gate modal — when an unpaid agent clicks "I'm Interested", we
+  // show a payment card (tier + price + Pay & Activate button) instead of
+  // immediately redirecting to the payment chat.
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMountedRef = useRef(true);
 
@@ -100,6 +105,16 @@ export default function AgentDashboard() {
 
   const handleApply = (need: ClientNeed) => {
     if (applyingNeed || appliedIds.has(need.id)) return;
+    // ─── Payment gate ──────────────────────────────────────────────────
+    // Agents need an active subscription to apply. If unpaid or expired,
+    // show a payment card modal (tier + price + Pay & Activate button)
+    // instead of immediately redirecting to the payment chat.
+    const paidUntil = (currentUser as any)?.paidUntil;
+    const isPaid = !!(currentUser as any)?.paid && paidUntil && new Date(paidUntil) > new Date();
+    if (!isPaid) {
+      setShowPaymentModal(true);
+      return;
+    }
     setApplyingNeed(need.id);
     fetch('/api/call-center-needs/interest', {
       method: 'POST',
@@ -115,6 +130,9 @@ export default function AgentDashboard() {
         } else if (r.status === 409) {
           setAppliedIds(prev => new Set([...prev, need.id]));
           addToast({ title: 'Already Applied', description: 'You have already applied for this need.', variant: 'default' });
+        } else if (r.status === 402) {
+          // Server also enforces the gate — show the payment modal
+          setShowPaymentModal(true);
         } else {
           return r.json().then(d => { throw new Error(d.error || 'Failed'); });
         }
@@ -156,12 +174,42 @@ export default function AgentDashboard() {
 
   return (
     <div className="space-y-6">
+      <VerifiedBadgeStyles />
       <Card className="bg-gradient-to-r from-[#0B1A2E] to-[#1a2d4a] border-0">
         <CardContent className="p-6 text-white">
-          <h2 className="text-xl font-bold">Welcome back, {currentUser?.name?.split(' ')[0]}!</h2>
-          <p className="text-sm text-gray-300 mt-1">Your profile is active and visible to call centers browsing the agent bank.</p>
+          <div className="flex items-center gap-4">
+            <div className="relative shrink-0">
+              <Avatar className="h-14 w-14 ring-2 ring-white/20 shadow-lg">
+                {currentUser?.avatar && <AvatarImage src={currentUser.avatar} alt={currentUser?.name || 'User'} />}
+                <AvatarFallback className="bg-[#16A34A] text-white text-lg font-bold">
+                  {(currentUser?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              {(() => {
+                const tiers: VerificationTier[] = Array.isArray((currentUser as any)?.verificationTiers) ? (currentUser!.verificationTiers as VerificationTier[]) : [];
+                const topTier = topVerificationTier(tiers);
+                return topTier ? (
+                  <span className="absolute -bottom-1 -right-1">
+                    <VerifiedBadge tier={topTier} iconOnly size="sm" verifiedAt={(currentUser as any)?.verifiedAt} />
+                  </span>
+                ) : null;
+              })()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-bold">Welcome back, {currentUser?.name?.split(' ')[0]}!</h2>
+              </div>
+              <p className="text-sm text-gray-300 mt-1">Your profile is active and visible to call centers browsing the agent bank.</p>
+              {(() => {
+                const tiers: VerificationTier[] = Array.isArray((currentUser as any)?.verificationTiers) ? (currentUser!.verificationTiers as VerificationTier[]) : [];
+                return tiers.length > 0 ? (
+                  <div className="mt-2"><VerifiedBadgeStack tiers={tiers} size="xs" /></div>
+                ) : null;
+              })()}
+            </div>
+          </div>
           {agent?.skills?.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-3">
+            <div className="flex flex-wrap gap-1.5 mt-4">
               {agent.skills.slice(0, 6).map((s: string, i: number) => (
                 <span key={i} className="px-2.5 py-1 rounded-full bg-white/10 text-xs font-medium">{s}</span>
               ))}
@@ -345,6 +393,76 @@ export default function AgentDashboard() {
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {/* ─── Payment gate modal ────────────────────────────────────────────
+          Shown when an unpaid agent tries to apply for a job. Displays the
+          subscription tier, price, and a "Pay & Activate" button that
+          redirects to the payment chat (PendingPaymentPage). */}
+      {showPaymentModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60"
+          onClick={() => setShowPaymentModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowPaymentModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex flex-col items-center text-center">
+              <div className="h-16 w-16 rounded-full bg-amber-100 flex items-center justify-center mb-4">
+                <Lock className="h-8 w-8 text-amber-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Subscription Required</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Activate your Agent Quarterly subscription to apply for jobs and get discovered by call centers.
+              </p>
+
+              {/* Price card */}
+              <div className="w-full bg-gray-50 rounded-xl border border-amber-200 p-5 mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-amber-600" />
+                    <span className="font-semibold text-gray-900">Agent Quarterly</span>
+                  </div>
+                  <Badge className="bg-amber-100 text-amber-700">3 months</Badge>
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl font-bold text-gray-900">1,000</span>
+                  <span className="text-sm font-medium text-gray-500">HTG / quarter</span>
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  Apply for any job on the platform for 3 months from activation.
+                </div>
+              </div>
+
+              <Button
+                className="w-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90 py-3 text-base font-semibold"
+                onClick={() => {
+                  setShowPaymentModal(false);
+                  navigateTo('pending-payment');
+                }}
+              >
+                <CreditCard className="h-4 w-4 mr-2" />
+                Pay & Activate
+              </Button>
+
+              <div className="mt-4 flex items-start gap-2 text-xs text-gray-500 max-w-sm">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                <span>
+                  You will be redirected to a chat with the admin to complete your payment.
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

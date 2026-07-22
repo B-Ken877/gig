@@ -1,17 +1,21 @@
 // Types aligned with Prisma schema for Gig Solutions
 
 export type PageType =
-  | 'home' | 'services' | 'for-clients' | 'careers' | 'about' | 'contact'
+  | 'home' | 'services' | 'for-clients' | 'careers' | 'about' | 'contact' | 'academy'
   | 'login' | 'register' | 'register-agent' | 'register-client'
   | 'agent-dashboard' | 'agent-profile' | 'agent-documents' | 'agent-availability' | 'agent-applications'
   | 'client-dashboard' | 'client-agents' | 'client-needs' | 'client-jobs' | 'client-applications' | 'client-profile'
   | 'admin-dashboard' | 'admin-users' | 'admin-job-posts'
   | 'payment-taker-dashboard'
   | 'messages'
+  | 'group-chat'
   | 'pending-payment'
   | 'support'
   | 'tickets'
-  | 'reviews';
+  | 'reviews'
+  | 'ai-training'
+  | 'marketplace'
+  | 'admin-products'
 
 export type UserRole = 'visitor' | 'agent' | 'client' | 'payment_taker' | 'admin';
 
@@ -23,10 +27,58 @@ export interface User {
   id: string; email: string; name: string; role: UserRole;
   phone?: string; avatar?: string; isActive: boolean;
   accountStatus: AccountStatus;
-  // Verification + Gig Score (premium badges)
+  // Verification + Gig Score (premium badges). Populated by /api/auth/login
+  // and /api/users — the UI renders badges immediately after login.
   verificationTiers?: string[];
   verifiedAt?: string | null;
   gigScore?: number;
+  // ─── Subscription / Payment gating ────────────────────────────────────
+  // `paid=true` + `paidUntil>now` is required for an agent to apply to a
+  // job, and for a call center to access the "Job Links" tab. The admin
+  // toggles this after approving a payment in the payment chat.
+  paid?: boolean;
+  paidUntil?: string | null;
+  paymentTier?: string | null;
+}
+
+// A user that can be reviewed (agent or call center). Returned by
+// /api/reviews?revieweeId=... and /api/reviews/search.
+export interface ReviewableUser {
+  id: string;
+  name: string;
+  role: 'agent' | 'client';
+  avatar?: string | null;
+  email?: string;
+  accountStatus?: string;
+  companyName?: string | null;
+  industry?: string | null;
+  country?: string | null;
+  skills?: string[];
+  verificationTiers?: string[];
+  verifiedAt?: string | null;
+  // Aggregate review stats (returned by search, not by the detail endpoint)
+  avgRating?: number | null;
+  reviewCount?: number;
+}
+
+export interface Review {
+  id: string;
+  reviewerId: string;
+  revieweeId: string;
+  rating: number;
+  title?: string | null;
+  comment: string;
+  createdAt: string;
+  updatedAt: string;
+  reviewer?: {
+    id: string;
+    name: string;
+    role: string;
+    avatar?: string | null;
+    companyName?: string | null;
+    verificationTiers?: string[];
+    verifiedAt?: string | null;
+  } | null;
 }
 
 export interface Agent {
@@ -115,40 +167,4 @@ export interface ToastMessage {
 export interface DashboardStat {
   label: string; value: string | number; change?: string;
   icon?: string; trend?: 'up' | 'down' | 'neutral';
-}
-
-// ─── Reviews (Trustpilot-style) ──────────────────────────────────────────
-export interface Review {
-  id: string;
-  reviewerId: string;
-  revieweeId: string;
-  rating: number;          // 1–5
-  title?: string | null;
-  comment: string;
-  createdAt: string;
-  updatedAt: string;
-  // Joined fields (returned by /api/reviews)
-  reviewer?: {
-    id: string;
-    name: string;
-    role: string;
-    avatar?: string | null;
-    // For call-center reviewers, surface the company name
-    companyName?: string | null;
-  };
-}
-
-// Search hit for the Reviews "find an agent or call center" box
-export interface ReviewableUser {
-  id: string;
-  name: string;             // for agents: user.name; for clients: companyName
-  role: UserRole;
-  avatar?: string | null;
-  // Aggregate rating stats (null if no reviews yet)
-  avgRating?: number | null;
-  reviewCount?: number;
-  // Optional enrichments
-  industry?: string | null;     // clients only
-  country?: string | null;      // agents only
-  skills?: string[];            // agents only
 }

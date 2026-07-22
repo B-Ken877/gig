@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireRole, getAuth } from '@/lib/auth-middleware';
 
-// GET /api/users/[id] — Get a single user
+// GET /api/users/[id] — Get a single user (any authenticated user can fetch).
+// PRIVACY POLICY: Only admin sees phone numbers. Password hash is NEVER
+// exposed to anyone (not even admin — admins use /api/users for edits).
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireRole(req, ['admin']);
+    const auth = await getAuth(req);
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    const isAdmin = auth.role === 'admin' || auth.role === 'payment_taker';
     const { id } = await params;
     const user = await db.user.findUnique({
       where: { id },
@@ -14,7 +20,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
-    return NextResponse.json({ user });
+    // Always strip the password hash — no one should ever see it.
+    // Phone is only visible to admins (platform privacy policy).
+    const { password, ...userWithoutPassword } = user as any;
+    if (isAdmin) {
+      // Admin sees everything (phone included) except the password hash.
+      return NextResponse.json({ user: userWithoutPassword });
+    }
+    // Non-admin: strip phone from User and Client.
+    const { phone, ...userWithoutPhone } = userWithoutPassword;
+    if (userWithoutPhone.client) {
+      const { phone: _clientPhone, ...clientWithoutPhone } = userWithoutPhone.client;
+      userWithoutPhone.client = clientWithoutPhone as any;
+    }
+    return NextResponse.json({ user: userWithoutPhone });
   } catch (error: unknown) {
     if (error instanceof Error && (error.message === 'Unauthorized' || error.message === 'Forbidden')) {
       return NextResponse.json({ error: error.message }, { status: error.message === 'Forbidden' ? 403 : 401 });
@@ -24,7 +43,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 }
 
-// PATCH /api/users/[id] — Update a user
+// PATCH /api/users/[id] — Update a user (admin only)
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole(req, ['admin']);
@@ -60,7 +79,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-// DELETE /api/users/[id] — Delete a user
+// DELETE /api/users/[id] — Delete a user (admin only)
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const auth = await getAuth(req);

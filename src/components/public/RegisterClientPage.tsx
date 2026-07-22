@@ -79,7 +79,7 @@ export default function RegisterClientPage() {
     if (!validate()) return;
     setLoading(true);
     try {
-      const result = await register({
+      await register({
         name: form.fullName,
         email: form.email,
         phone: form.phone,
@@ -92,17 +92,14 @@ export default function RegisterClientPage() {
         },
       });
 
-      if (result.requiresApproval) {
-        try {
-          await login(form.email, form.password);
-        } catch(loginErr) {
-          addToast({ title: 'Account created!', description: 'Please sign in to complete your payment.', variant: 'success' });
-          navigateTo('login');
-          return;
-        }
-        addToast({ title: 'Account created!', description: 'Please complete your onboarding payment to activate your account.', variant: 'success' });
-        navigateTo('pending-payment');
-        return;
+      // Free registration — auto-login and redirect to dashboard.
+      try {
+        await login(form.email, form.password);
+        addToast({ title: 'Welcome aboard!', description: 'Your call center account is ready. Browse agents and post jobs for free.', variant: 'success' });
+        navigateTo('client-dashboard');
+      } catch (loginErr) {
+        addToast({ title: 'Account created!', description: 'Please sign in to continue.', variant: 'success' });
+        navigateTo('login');
       }
     } catch (err) {
       addToast({ title: 'Registration failed', description: err instanceof Error ? err.message : 'Something went wrong. Please try again.', variant: 'destructive' });
@@ -137,9 +134,9 @@ export default function RegisterClientPage() {
           </div>
           <h1 className="text-2xl font-bold tracking-wide text-white">Register as Call Center</h1>
           <p className="mt-2 text-sm text-gray-400">Create your company account to post jobs and find agents</p>
-          <div className="mt-3 inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-1.5">
-            <Shield className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-amber-300 text-sm font-medium">Monthly subscription: <strong className="text-white">2,000 HTG/month</strong></span>
+          <div className="mt-3 inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-4 py-1.5">
+            <Shield className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-emerald-300 text-sm font-medium">Free to register · <strong className="text-white">3,000 HTG / year</strong> to access Job Links</span>
           </div>
         </div>
 

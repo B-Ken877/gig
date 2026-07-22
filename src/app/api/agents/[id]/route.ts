@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getAuth } from '@/lib/auth-middleware';
 
 // Safe JSON parse — returns the raw string if it can't be parsed as JSON.
 // The Agent.computerSpecs column is typed as String in the schema (default "{}"),
@@ -19,6 +20,11 @@ function safeJson<T>(raw: string | null | undefined, fallback: T): T {
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    // AUTH: previously this endpoint had NO auth check — anyone could fetch
+    // any agent's full profile including phone. Now require authentication.
+    const auth = await getAuth(req);
+    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const isAdmin = auth.role === 'admin' || auth.role === 'payment_taker';
     const { id } = await params;
     let agent;
     try {
@@ -30,8 +36,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       agent = await db.agent.findUnique({ where: { id } });
     }
     if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    // Strip phone from the nested user object UNLESS the requester is
+    // the owner or an admin. Phone is private per platform policy.
+    const isOwner = !!agent.user && auth.userId === agent.user.id;
+    const userWithoutPhone = agent.user
+      ? { ...agent.user, phone: (isOwner || isAdmin) ? agent.user.phone : undefined }
+      : agent.user;
     return NextResponse.json({
       ...agent,
+      user: userWithoutPhone,
       languages: safeJson<string[]>(agent.languages, []),
       skills: safeJson<string[]>(agent.skills, []),
       previousEmployers: safeJson<string[]>(agent.previousEmployers, []),

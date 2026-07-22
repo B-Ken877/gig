@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAppStore, authFetch } from '@/lib/store';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, CreditCard, MessageCircle, Clock, ArrowLeft, LogOut } from 'lucide-react';
+import { Send, CreditCard, MessageCircle, Clock, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -16,72 +16,94 @@ interface Message {
   senderRole?: string;
 }
 
+/**
+ * Payment chat page.
+ *
+ * Reachable when:
+ *   - An agent tries to apply for a job without an active subscription.
+ *   - A call center tries to open the "Job Links" tab without an active subscription.
+ *
+ * It opens (or reuses) a 1:1 conversation with an admin and pre-fills a
+ * greeting that names the right tier + amount. It also creates a
+ * PaymentRequest (status: pending) so the admin sees the request in the
+ * Payment Requests dashboard and gets a notification.
+ *
+ * Tiers (per the new pricing model):
+ *   - Agent:        1,000 HTG / quarter (3 months)
+ *   - Call Center:  3,000 HTG / year    (12 months)
+ */
 export default function PendingPaymentPage() {
-  const { currentUser, navigateTo, logout } = useAppStore();
+  const { currentUser, navigateTo } = useAppStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [paymentTakerId, setPaymentTakerId] = useState<string | null>(null);
+  const [adminId, setAdminId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const feeAmount = currentUser?.role === 'client'
-    ? '2,000 HTG / month'
-    : '2,000 HTG / year';
+  // New pricing model — free registration, payment only at gated features.
+  const tierAmount = currentUser?.role === 'client'
+    ? '3,000 HTG / year'
+    : '1,000 HTG / 3 months';
+  const tierDescription = currentUser?.role === 'client'
+    ? 'Call Center Yearly Subscription'
+    : 'Agent Quarterly Subscription';
   const roleLabel = currentUser?.role === 'client' ? 'Call Center' : 'Agent';
 
-  // Find payment taker and create conversation (only once)
+  // Find admin and create conversation (only once)
   const initDoneRef = useRef(false);
   useEffect(() => {
     const init = async () => {
       if (initDoneRef.current) return;
+      if (!currentUser) return;
       try {
-        // Find a payment taker user
+        // Find an admin user (payment_taker role is now merged into admin)
+        // Search broadly with an empty query so the API returns its full list,
+        // then filter client-side for admin role.
         let ptId: string | null = null;
-        const searchRes = await authFetch('/api/messages/search-users?q=payment');
+        const searchRes = await authFetch('/api/messages/search-users?q=&includeAdmins=true');
         if (searchRes.ok) {
           const data = await searchRes.json();
           const users = data.users || data || [];
-          const pt = users.find((u: { role?: string }) => u.role === 'payment_taker');
+          // Look for admin or payment_taker (legacy DB rows)
+          const pt = users.find((u: { role?: string }) => u.role === 'admin' || u.role === 'payment_taker');
           if (pt) {
             ptId = pt.id;
-            setPaymentTakerId(pt.id);
+            setAdminId(pt.id);
           }
         }
 
-        if (!ptId) { setLoading(false); return; }
-
-        // Check for existing conversation with payment taker (using local ptId, not state)
-        const msgRes = await authFetch('/api/messages?userId=' + (currentUser?.id || ''));
-        if (msgRes.ok) {
-          const data = await msgRes.json();
-          const conversations = data.conversations || [];
-          if (Array.isArray(conversations)) {
-            const ptConv = conversations.find((c: { user1Id: string; user2Id: string }) => {
-              return c.user1Id === ptId || c.user2Id === ptId;
-            });
-            if (ptConv) {
-              setConversationId(ptConv.id);
-              initDoneRef.current = true;
-              // Load messages for this conversation
-              const convRes = await authFetch('/api/messages?conversationId=' + ptConv.id);
-              if (convRes.ok) {
-                const convData = await convRes.json();
-                if (convData.messages) setMessages(convData.messages);
-              }
-              return;
-            }
-          }
+        // If we still can't find an admin (rare — there should always be at
+        // least one admin in the system), surface the error to the user
+        // instead of silently failing. The idempotent POST below will also
+        // fail gracefully if ptId is null.
+        if (!ptId) {
+          console.error('[PendingPaymentPage] No admin user found in search results');
+          // Don't return early — fall through to create the PaymentRequest
+          // WITHOUT a conversation. The admin will still see the request in
+          // their dashboard and can reach out via the user's profile.
+          setLoading(false);
+          // Try to create the PaymentRequest anyway so the admin sees it.
+          createPaymentRequest(null).catch(() => { /* non-fatal */ });
+          return;
         }
 
-        // No existing conversation found - create one with greeting (only once)
+        // Start a FRESH conversation for this payment attempt.
+        // resetConversation=true tells the API to wipe any prior messages
+        // in the existing admin conversation, so the chat appears new
+        // (matches the ticket system pattern: each payment request is a
+        // fresh thread, not appended to a previous one).
+        // The Conversation table has a UNIQUE(user1Id, user2Id) constraint
+        // so we can't literally create a new row — we reset the existing
+        // one in place.
         const createRes = await authFetch('/api/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             recipientUserId: ptId,
-            content: 'Hello! I just registered as a ' + roleLabel + ' and need to complete my payment of ' + feeAmount + '. How do I proceed?',
+            resetConversation: true,
+            content: 'Hello! I would like to activate my ' + roleLabel + ' subscription (' + tierDescription + ' — ' + tierAmount + '). How do I proceed with the payment?',
           }),
         });
         if (createRes.ok) {
@@ -93,6 +115,9 @@ export default function PendingPaymentPage() {
             setMessages([newConv.message]);
           }
         }
+        // Create the PaymentRequest regardless of whether the message was sent —
+        // the admin needs to see it in their queue.
+        await createPaymentRequest(ptId).catch(() => { /* non-fatal */ });
         initDoneRef.current = true;
       } catch (err) {
         console.error('Init payment chat error:', err);
@@ -100,8 +125,29 @@ export default function PendingPaymentPage() {
         setLoading(false);
       }
     };
-    if (currentUser) init();
-  }, [currentUser]);
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
+  // Create a pending PaymentRequest for this user + notify the admin.
+  // Idempotent — if a pending request already exists, the API just returns it.
+  const createPaymentRequest = async (adminId: string) => {
+    try {
+      await authFetch('/api/payment-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser?.id,
+          adminId,
+          tierDescription,
+          tierAmount,
+          roleLabel,
+        }),
+      });
+    } catch (err) {
+      console.error('Failed to create payment request:', err);
+    }
+  };
 
   // Poll for new messages
   useEffect(() => {
@@ -128,14 +174,14 @@ export default function PendingPaymentPage() {
   }, [messages]);
 
   const handleSend = async () => {
-    if (!newMessage.trim() || !paymentTakerId) return;
+    if (!newMessage.trim() || !adminId) return;
     setSending(true);
     try {
       const res = await authFetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          recipientUserId: paymentTakerId,
+          recipientUserId: adminId,
           content: newMessage.trim(),
         }),
       });
@@ -164,21 +210,40 @@ export default function PendingPaymentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-amber-900 flex flex-col">
+    <div className="h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900 flex flex-col">
       {/* Header */}
       <div className="bg-slate-900/80 backdrop-blur-xl border-b border-white/10 px-4 py-3 flex items-center gap-4">
-        <button onClick={() => { logout(); navigateTo('home'); }} className="text-slate-400 hover:text-white">
-          <LogOut className="w-5 h-5" />
+        <button
+          onClick={() => navigateTo(currentUser?.role === 'agent' ? 'agent-dashboard' : 'client-dashboard')}
+          className="text-slate-400 hover:text-white"
+          title="Back to dashboard"
+        >
+          <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1">
           <h1 className="text-white font-semibold flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-amber-400" />
-            Payment Pending
+            <CreditCard className="w-5 h-5 text-emerald-400" />
+            Activate Subscription
           </h1>
-          <p className="text-slate-400 text-sm">{roleLabel} Registration — Waiting for payment confirmation</p>
+          <p className="text-slate-400 text-sm">{tierDescription} — Chat with the admin to complete your payment</p>
         </div>
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-full px-4 py-1.5">
-          <span className="text-amber-300 text-sm font-medium">{feeAmount}</span>
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-full px-4 py-1.5">
+          <span className="text-emerald-300 text-sm font-medium">{tierAmount}</span>
+        </div>
+      </div>
+
+      {/* Info banner */}
+      <div className="bg-emerald-500/5 border-b border-emerald-500/10 px-4 py-3">
+        <div className="max-w-3xl mx-auto flex items-start gap-3">
+          <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-slate-300">
+            <p className="font-medium text-emerald-300 mb-0.5">How it works</p>
+            <p className="text-slate-400 text-xs leading-relaxed">
+              Send a message to the admin below to start the payment process. Once your payment is received and approved,
+              you will be able to {roleLabel === 'Agent' ? 'apply for jobs' : 'access the Job Links tab'} immediately.
+              Your subscription will be valid for {roleLabel === 'Agent' ? '3 months' : '12 months'} from the activation date.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -192,7 +257,7 @@ export default function PendingPaymentPage() {
           <div className="text-center py-12">
             <MessageCircle className="w-12 h-12 text-slate-600 mx-auto mb-3" />
             <p className="text-slate-400">Starting your payment conversation...</p>
-            <p className="text-slate-500 text-sm mt-1">A payment representative will help you complete the process.</p>
+            <p className="text-slate-500 text-sm mt-1">An admin will help you complete the process.</p>
           </div>
         ) : (
           <AnimatePresence>
@@ -212,7 +277,7 @@ export default function PendingPaymentPage() {
                   )}>
                     {!isMine && msg.senderRole && (
                       <p className="text-xs font-medium text-emerald-400 mb-1">
-                        {msg.senderRole === 'payment_taker' ? 'Payment Representative' : msg.senderRole}
+                        {msg.senderRole === 'admin' || msg.senderRole === 'payment_taker' ? 'Admin' : msg.senderRole}
                       </p>
                     )}
                     <p className="text-sm whitespace-pre-wrap">{msg.content}</p>

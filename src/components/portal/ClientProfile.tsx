@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Save, Loader2, Building2, Globe, Receipt, User, Camera, CheckCircle2, Star } from 'lucide-react';
+import { Save, Loader2, Building2, Globe, Receipt, User, Camera } from 'lucide-react';
 
 const INDUSTRIES = [
   'Customer Service', 'Technical Support', 'Sales & Telemarketing',
@@ -20,12 +20,59 @@ const INDUSTRIES = [
 ];
 
 export default function ClientProfile() {
-  const { currentUser, addToast, updateCurrentUser, navigateTo, setPendingReviewUserId } = useAppStore();
+  const { currentUser, addToast, updateCurrentUser } = useAppStore();
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (currentUser) setAvatarUrl(currentUser.avatar || null);
+  }, [currentUser?.avatar, currentUser?.id]);
+
+  // ─── Avatar upload ────────────────────────────────────────────────────
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!currentUser) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      addToast({ title: 'Invalid file', description: 'Please choose an image file (JPG, PNG, WebP, GIF).', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      addToast({ title: 'Image too large', description: 'Maximum file size is 8 MB.', variant: 'destructive' });
+      return;
+    }
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/users/avatar', {
+        method: 'POST',
+        headers: {
+          'X-User-Id': currentUser.id,
+          'X-User-Role': currentUser.role,
+        },
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Upload failed');
+      }
+      const data = await res.json();
+      const bustUrl = data.avatar + '?t=' + Date.now();
+      setAvatarUrl(bustUrl);
+      updateCurrentUser({ avatar: bustUrl });
+      addToast({ title: 'Profile picture updated!', description: 'Your new logo is now visible across the platform.', variant: 'success' });
+    } catch (err) {
+      addToast({ title: 'Upload failed', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
+    } finally {
+      setUploadingAvatar(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // Company info
   const [companyName, setCompanyName] = useState('');
@@ -41,12 +88,8 @@ export default function ClientProfile() {
   const [contactPerson, setContactPerson] = useState('');
   const [phone, setPhone] = useState('');
 
-  // Avatar preview
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-
   useEffect(() => {
     if (!currentUser) return;
-    setAvatarUrl(currentUser.avatar || null);
     authFetch(`/api/clients?userId=${currentUser.id}`)
       .then((r) => {
         if (!r.ok) throw new Error('Failed');
@@ -67,90 +110,60 @@ export default function ClientProfile() {
         }
       })
       .catch(() => {
-        addToast({ title: 'Error loading profile', description: 'Could not load your company information.', variant: 'destructive' });
+        addToast({ title: 'Error loading profile', variant: 'destructive' });
       })
       .finally(() => setLoading(false));
   }, [currentUser, addToast]);
 
-  // ─── Avatar upload ──────────────────────────────────────────────────────
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!currentUser) return;
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      addToast({ title: 'Invalid file', description: 'Please choose an image file (JPG, PNG, WebP, GIF).', variant: 'destructive' });
-      return;
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      addToast({ title: 'Image too large', description: 'Maximum file size is 8 MB.', variant: 'destructive' });
-      return;
-    }
-    setUploadingAvatar(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch('/api/users/avatar', {
-        method: 'POST',
-        headers: { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
-        body: fd,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Upload failed');
-      }
-      const data = await res.json();
-      const bustUrl = data.avatar + '?t=' + Date.now();
-      setAvatarUrl(bustUrl);
-      updateCurrentUser({ avatar: bustUrl });
-      addToast({ title: 'Profile picture updated!', description: 'Your company logo will now appear in chats, job needs, and dashboards.', variant: 'success' });
-    } catch (err) {
-      addToast({ title: 'Upload failed', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
-    } finally {
-      setUploadingAvatar(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  // ─── Unified save ──────────────────────────────────────────────────────
-  // Every save button sends the FULL set of client fields in one PUT.
-  // The /api/clients/[id] endpoint splits phone out to the User model on the server.
-  const saveAll = async (scope: 'company' | 'billing' | 'contact') => {
+  const saveCompany = async () => {
     if (!client) return;
     setSaving(true);
     try {
       const res = await authFetch(`/api/clients/${client.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          companyName,
-          industry,
-          companyLink: companyLink || null,
-          billingAddress,
-          billingEmail: billingEmail || null,
-          taxId: taxId || null,
-          contactPerson,
-          phone,
-        }),
+        body: JSON.stringify({ companyName, industry, companyLink: companyLink || null }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Save failed');
-      }
-      const data = await res.json();
-      if (data.client) setClient(data.client);
+      if (!res.ok) throw new Error('Save failed');
+      addToast({ title: 'Company info saved', variant: 'success' });
+    } catch {
+      addToast({ title: 'Failed to save', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
 
-      const labels = {
-        company: 'Company info',
-        billing: 'Billing info',
-        contact: 'Contact info',
-      } as const;
-      addToast({
-        title: labels[scope] + ' saved!',
-        description: 'Your changes have been saved and will appear across the platform.',
-        variant: 'success',
+  const saveBilling = async () => {
+    if (!client) return;
+    setSaving(true);
+    try {
+      const res = await authFetch(`/api/clients/${client.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billingAddress, billingEmail: billingEmail || null, taxId: taxId || null }),
       });
-    } catch (err) {
-      addToast({ title: 'Failed to save', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
+      if (!res.ok) throw new Error('Save failed');
+      addToast({ title: 'Billing info saved', variant: 'success' });
+    } catch {
+      addToast({ title: 'Failed to save', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveContact = async () => {
+    if (!client) return;
+    setSaving(true);
+    try {
+      const res = await authFetch(`/api/clients/${client.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactPerson, phone }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      addToast({ title: 'Contact info saved', variant: 'success' });
+    } catch {
+      addToast({ title: 'Failed to save', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -177,9 +190,6 @@ export default function ClientProfile() {
     );
   }
 
-  const displayLogo = companyName || currentUser?.name || 'C';
-  const initials = displayLogo.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-
   return (
     <div className="space-y-6">
       <div>
@@ -187,64 +197,60 @@ export default function ClientProfile() {
         <p className="text-sm text-gray-500 mt-1">Manage your company information, billing details, and contact info.</p>
       </div>
 
-      {/* Profile summary card with avatar */}
-      <div className="rounded-xl border bg-white p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4" style={{ borderLeft: '4px solid #16A34A' }}>
-        <div className="relative">
-          <Avatar className="h-16 w-16 rounded-xl border-2 border-gray-200">
-            {avatarUrl && <AvatarImage src={avatarUrl} alt={displayLogo} />}
-            <AvatarFallback className="bg-[#0B1A2E] text-white font-bold text-lg rounded-xl">{initials}</AvatarFallback>
-          </Avatar>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadingAvatar}
-            className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-[#0B1A2E] text-white flex items-center justify-center shadow-lg hover:bg-[#0B1A2E]/90 disabled:opacity-50"
-            title="Upload company logo / profile picture"
-          >
-            {uploadingAvatar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            onChange={handleAvatarChange}
-            className="hidden"
-          />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-gray-900 truncate">{companyName || 'Company Name'}</h3>
-          <div className="flex flex-wrap items-center gap-2 mt-1">
-            {industry && <Badge variant="secondary" className="text-xs">{industry}</Badge>}
-            {currentUser?.email && <span className="text-xs text-gray-500">{currentUser.email}</span>}
+      {/* Profile summary card with avatar upload */}
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-6 flex flex-col sm:flex-row items-center sm:items-start gap-5">
+          <div className="relative">
+            <Avatar className="h-24 w-24 border-2 border-gray-200 rounded-xl">
+              {avatarUrl && <AvatarImage src={avatarUrl} alt={companyName || 'Company'} />}
+              <AvatarFallback className="bg-[#0B1A2E] text-white text-2xl font-bold rounded-xl">
+                {(companyName || 'C')[0]?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadingAvatar}
-              className="text-xs text-[#16A34A] hover:underline disabled:opacity-50"
+              className="absolute -bottom-1 -right-1 h-9 w-9 rounded-full bg-[#0B1A2E] text-white flex items-center justify-center shadow-lg hover:bg-[#0B1A2E]/90 disabled:opacity-50"
+              title="Upload company logo / profile picture"
             >
-              {uploadingAvatar ? 'Uploading...' : 'Change picture'}
+              {uploadingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
           </div>
-        </div>
-        <Badge className={currentUser?.accountStatus === 'active' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 'bg-amber-100 text-amber-700 hover:bg-amber-100'}>
-          {currentUser?.accountStatus?.replace('_', ' ') || 'Active'}
-        </Badge>
-        {currentUser?.id && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 border-[#FFB300]/40 text-[#B45309] hover:bg-amber-50 hover:text-[#B45309] shrink-0"
-            onClick={() => {
-              setPendingReviewUserId(currentUser.id, false);
-              navigateTo('reviews');
-            }}
-            title="See reviews about your company on the Reviews page"
-          >
-            <Star className="h-3.5 w-3.5 fill-[#FFB300] text-[#FFB300]" />
-            See Reviews
-          </Button>
-        )}
-      </div>
+          <div className="flex-1 text-center sm:text-left">
+            <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+              <h3 className="text-lg font-semibold text-gray-900">{companyName || 'Company Name'}</h3>
+              <Badge className={currentUser?.accountStatus === 'active' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 'bg-amber-100 text-amber-700 hover:bg-amber-100'}>
+                {currentUser?.accountStatus?.replace('_', ' ') || 'Active'}
+              </Badge>
+            </div>
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1">
+              {industry && <Badge variant="secondary" className="text-xs">{industry}</Badge>}
+              {currentUser?.email && <span className="text-xs text-gray-500">{currentUser.email}</span>}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Upload a company logo or profile picture. It will be shown in chats, job posts, and your applications.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 gap-2"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingAvatar}
+            >
+              {uploadingAvatar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+              {uploadingAvatar ? 'Uploading...' : 'Change Picture'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="company" className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-4">
@@ -258,7 +264,7 @@ export default function ClientProfile() {
           <Card className="border-0 shadow-sm">
             <CardHeader>
               <CardTitle className="text-base">Company Information</CardTitle>
-              <CardDescription>Your business details visible to agents browsing job postings.</CardDescription>
+              <CardDescription>Your business details visible to agents browsing job links.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="space-y-2">
@@ -281,7 +287,7 @@ export default function ClientProfile() {
               </div>
 
               <div className="flex justify-end pt-2">
-                <Button onClick={() => saveAll('company')} disabled={saving} className="gap-2">
+                <Button onClick={saveCompany} disabled={saving} className="gap-2">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save Company Info
                 </Button>
@@ -315,7 +321,7 @@ export default function ClientProfile() {
               </div>
 
               <div className="flex justify-end pt-2">
-                <Button onClick={() => saveAll('billing')} disabled={saving} className="gap-2">
+                <Button onClick={saveBilling} disabled={saving} className="gap-2">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save Billing Info
                 </Button>
@@ -348,7 +354,7 @@ export default function ClientProfile() {
               </div>
 
               <div className="flex justify-end pt-2">
-                <Button onClick={() => saveAll('contact')} disabled={saving} className="gap-2">
+                <Button onClick={saveContact} disabled={saving} className="gap-2">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save Contact Info
                 </Button>
@@ -357,12 +363,6 @@ export default function ClientProfile() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Reassurance banner */}
-      <div className="flex items-start gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
-        <CheckCircle2 className="h-4 w-4 text-[#16A34A] mt-0.5 shrink-0" />
-        <p>Each save button updates <strong>all</strong> your company fields. The company name (not your personal name) will be shown to agents and on the website everywhere.</p>
-      </div>
     </div>
   );
 }

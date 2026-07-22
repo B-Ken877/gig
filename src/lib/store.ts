@@ -17,25 +17,42 @@ export function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise
 }
 
 const PUBLIC_PAGES: ReadonlySet<PageType> = new Set<PageType>([
-  'home', 'services', 'for-clients', 'careers', 'about', 'contact',
+  'home', 'services', 'for-clients', 'careers', 'about', 'contact', 'academy',
   'login', 'register-agent', 'register-client', 'pending-payment',
 ]);
 
 const VALID_PAGES: ReadonlySet<PageType> = new Set<PageType>([
-  'home','services','for-clients','careers','about','contact',
+  'home','services','for-clients','careers','about','contact','academy',
   'login','register-agent','register-client','pending-payment',
   'agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications',
   'client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile',
   'admin-dashboard','admin-users','admin-job-posts',
-  'payment-taker-dashboard','messages','support','tickets','reviews',
+  'payment-taker-dashboard','messages','group-chat','support','tickets','reviews',
 ]);
 
 // FEATURE: Role-based page access control
+// NOTE: payment_taker role is now MERGED into admin — same person handles both.
+// Any user whose DB role is 'payment_taker' is treated as 'admin' for nav/permissions.
+// (See `effectiveRole` helper below — also applied at login in /api/auth/login.)
+function effectiveRole(role: string | undefined): UserRole {
+  if (!role) return 'visitor';
+  if (role === 'payment_taker') return 'admin';
+  return role as UserRole;
+}
+
 const ROLE_PAGE_MAP: Partial<Record<UserRole, ReadonlySet<PageType>>> = {
-  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications','messages','support','pending-payment','reviews']),
-  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile','messages','support','pending-payment','reviews']),
-  admin: new Set(['admin-dashboard','admin-users','admin-job-posts','messages','reviews']),
-  payment_taker: new Set(['payment-taker-dashboard','messages','tickets','support','reviews']),
+  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications','academy','ai-training','marketplace','messages','group-chat','support','pending-payment','reviews']),
+  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile','academy','ai-training','marketplace','messages','group-chat','support','pending-payment','reviews']),
+  // Admin = merged admin + payment_taker. One session, full access.
+  admin: new Set([
+    'admin-dashboard','admin-users','admin-job-posts','admin-products',
+    'payment-taker-dashboard','academy','messages','tickets','support','reviews','group-chat',
+  ]),
+  // Legacy: payment_taker in DB is treated as admin (effectiveRole remaps it).
+  payment_taker: new Set([
+    'payment-taker-dashboard','admin-dashboard','admin-users','admin-job-posts',
+    'academy','messages','tickets','support','reviews','group-chat',
+  ]),
 };
 
 interface AuthSlice {
@@ -50,7 +67,8 @@ interface AuthSlice {
     clientProfile?: Record<string, unknown>;
   }) => Promise<{ message?: string; requiresApproval?: boolean; userId?: string }>;
   logout: () => void;
-  // Patch the current user object in-store (e.g., after avatar upload, profile save).
+  // Update the current user in-place (used after avatar upload, profile edits,
+  // verification grants, etc.) without requiring a full re-login.
   updateCurrentUser: (patch: Partial<User>) => void;
 }
 
@@ -80,9 +98,7 @@ const createAuthSlice = (
   },
   logout: () => { set(() => ({ currentUser: null, isAuthenticated: false, currentPage: 'home' as PageType, previousPages: [] })); },
   updateCurrentUser: (patch) => {
-    set((state) => ({
-      currentUser: state.currentUser ? { ...state.currentUser, ...patch } : null,
-    }));
+    set((state) => ({ currentUser: state.currentUser ? { ...state.currentUser, ...patch } : null }));
   },
 });
 
@@ -90,17 +106,23 @@ interface NavSlice {
   currentPage: PageType;
   previousPages: PageType[];
   pendingChatUserId: string | null;
-  // Reviews feature: pre-populate the Reviews page with a specific user
-  // (set when the user clicks "See Reviews" on a profile or agent card).
-  // After ReviewsPage consumes it, it calls setPendingReviewUserId(null).
+  // Reviews: when the user clicks "Reviews" on an agent card or profile,
+  // we stash the target user id here so the ReviewsPage knows whose reviews
+  // to load + whether to auto-scroll to the "leave a review" form.
   pendingReviewUserId: string | null;
-  pendingReviewScrollToForm?: boolean;
+  pendingReviewScrollToForm: boolean;
+  // Group chat: when the client hires an agent from the Applications page,
+  // we stash the group chat id returned by /api/applications/hire here so
+  // the GroupChatPage can auto-open that specific per-job chat thread.
+  pendingGroupChatId: string | null;
   navigateTo: (page: PageType) => void;
   goBack: () => void;
   isPublicPage: () => boolean;
   isRoleAllowed: (page: PageType) => boolean;
   syncFromHash: () => void;
-  setPendingReviewUserId: (id: string | null, scrollToForm?: boolean) => void;
+  setPendingReviewUserId: (userId: string | null, scrollToForm?: boolean) => void;
+  setPendingGroupChatId: (chatId: string | null) => void;
+  clearPendingGroupChatId: () => void;
 }
 
 const createNavSlice = (
@@ -112,18 +134,10 @@ const createNavSlice = (
   pendingChatUserId: null,
   pendingReviewUserId: null,
   pendingReviewScrollToForm: false,
+  pendingGroupChatId: null,
   navigateTo: (page: PageType) => {
     const { currentPage } = get();
-    // FEATURE: when navigating AWAY from the reviews page, clear the pending review
-    // pre-population state so it doesn't leak into a future visit.
-    if (currentPage !== 'reviews' && page !== 'reviews') {
-      // no-op — keep current pendingReviewUserId if any
-    }
-    if (page === currentPage) {
-      // same-page nav: still scroll to top
-      if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
-      return;
-    }
+    if (page === currentPage) return;
     // BUG FIX: Limit history depth to prevent memory growth
     set(() => ({ previousPages: [...get().previousPages.slice(-20), currentPage], currentPage: page }));
     if (typeof window !== 'undefined') {
@@ -146,7 +160,9 @@ const createNavSlice = (
   isRoleAllowed: (page: PageType) => {
     const role = get().currentUser?.role;
     if (!role) return false;
-    const allowed = ROLE_PAGE_MAP[role];
+    // Treat payment_taker as admin (merged role)
+    const effRole = effectiveRole(role);
+    const allowed = ROLE_PAGE_MAP[effRole] || ROLE_PAGE_MAP[role];
     if (!allowed) return false;
     return allowed.has(page);
   },
@@ -158,8 +174,14 @@ const createNavSlice = (
       set(() => ({ currentPage: hash as PageType }));
     }
   },
-  setPendingReviewUserId: (id, scrollToForm = false) => {
-    set(() => ({ pendingReviewUserId: id, pendingReviewScrollToForm: scrollToForm }));
+  setPendingReviewUserId: (userId, scrollToForm = false) => {
+    set(() => ({ pendingReviewUserId: userId, pendingReviewScrollToForm: scrollToForm }));
+  },
+  setPendingGroupChatId: (chatId) => {
+    set(() => ({ pendingGroupChatId: chatId }));
+  },
+  clearPendingGroupChatId: () => {
+    set(() => ({ pendingGroupChatId: null }));
   },
 });
 
@@ -172,10 +194,6 @@ interface UISlice {
   toasts: ToastMessage[];
   addToast: (toast: Omit<ToastMessage, 'id'>) => void;
   removeToast: (id: string) => void;
-  // Notification sound preference: 'on' = play chime on new push/in-app notif, 'off' = muted.
-  // Persisted in localStorage so the user's choice survives reloads.
-  notifSoundPref: 'on' | 'off';
-  setNotifSoundPref: (pref: 'on' | 'off') => void;
 }
 
 const createUISlice = (
@@ -194,8 +212,6 @@ const createUISlice = (
     setTimeout(() => { get().removeToast(id); }, 5000);
   },
   removeToast: (id: string) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
-  notifSoundPref: 'on',
-  setNotifSoundPref: (pref) => set(() => ({ notifSoundPref: pref })),
 });
 
 type DataCacheKey = 'agents' | 'clients' | 'jobPosts' | 'callCenterNeeds' | 'paymentRequests' | 'notifications' | 'auditLogs';
@@ -234,8 +250,8 @@ export const useAppStore = create<AppStore>()(
         isAuthenticated: state.isAuthenticated,
         currentPage: state.currentPage,
         previousPages: state.previousPages,
-        notifSoundPref: state.notifSoundPref,
       }),
     }
   )
 );
+

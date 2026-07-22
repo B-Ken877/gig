@@ -87,7 +87,7 @@ export default function ClientDashboard() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Job Postings</p>
+                <p className="text-sm text-gray-500">Job Links</p>
                 <p className="text-2xl font-bold mt-1">{stats.jobs}</p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center">
@@ -115,7 +115,7 @@ export default function ClientDashboard() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Staffing Needs</p>
+                <p className="text-sm text-gray-500">My Jobs</p>
                 <p className="text-2xl font-bold mt-1">{stats.needs}</p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center">
@@ -151,8 +151,8 @@ export default function ClientDashboard() {
             </Button>
             <Button variant="outline" className="h-auto py-4 flex flex-col gap-2" onClick={() => navigateTo('client-needs' as never)}>
               <Briefcase className="h-5 w-5 text-blue-600" />
-              <span className="text-sm font-medium">Staffing Needs</span>
-              <span className="text-xs text-gray-400">Manage your needs</span>
+              <span className="text-sm font-medium">My Jobs</span>
+              <span className="text-xs text-gray-400">Manage your jobs</span>
             </Button>
             <Button variant="outline" className="h-auto py-4 flex flex-col gap-2" onClick={() => navigateTo('client-agents' as never)}>
               <Users className="h-5 w-5 text-purple-600" />
@@ -174,8 +174,8 @@ export default function ClientDashboard() {
             <DollarSign className="h-5 w-5 text-green-600 mt-0.5" />
             <div>
               <h3 className="font-semibold text-green-900">Your Subscription</h3>
-              <p className="text-sm text-green-700 mt-1">Monthly fee: <strong>2,000 HTG</strong></p>
-              <p className="text-xs text-green-600 mt-1">Your account is active and in good standing.</p>
+              <p className="text-sm text-green-700 mt-1">Annual fee: <strong>3,000 HTG / year</strong></p>
+              <p className="text-xs text-green-600 mt-1">Required to access Job Links. Free to register.</p>
             </div>
           </div>
         </CardContent>

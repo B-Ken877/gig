@@ -39,11 +39,43 @@ export async function GET(req: NextRequest) {
     }
 
     if (userIdParam) {
+      // ─── Orphan-cleanup pass ───────────────────────────────────────────
+      // Earlier versions of the schema allowed Conversation rows to survive
+      // even when one of the participant users was hard-deleted. Prisma's
+      // include then crashes with "Field user2 is required to return data,
+      // got null instead" because the relation is non-optional. We proactively
+      // delete any conversation whose user1 or user2 no longer exists before
+      // running the include query. This is best-effort and silent.
+      try {
+        const allConvs = await db.conversation.findMany({
+          where: { OR: [{ user1Id: userId }, { user2Id: userId }] },
+          select: { id: true, user1Id: true, user2Id: true },
+        });
+        const participantIds = [...new Set(allConvs.flatMap(c => [c.user1Id, c.user2Id]))];
+        if (participantIds.length > 0) {
+          const existing = await db.user.findMany({
+            where: { id: { in: participantIds } },
+            select: { id: true },
+          });
+          const existingSet = new Set(existing.map(u => u.id));
+          const orphanIds = allConvs
+            .filter(c => !existingSet.has(c.user1Id) || !existingSet.has(c.user2Id))
+            .map(c => c.id);
+          if (orphanIds.length > 0) {
+            await db.conversation.deleteMany({ where: { id: { in: orphanIds } } });
+            console.log('[messages GET] cleaned up ' + orphanIds.length + ' orphaned conversation(s)');
+          }
+        }
+      } catch (cleanupErr) {
+        // Don't let the cleanup pass mask the real query — log and continue.
+        console.error('[messages GET] orphan cleanup failed:', cleanupErr);
+      }
+
       const conversations = await db.conversation.findMany({
         where: { OR: [{ user1Id: userId }, { user2Id: userId }] },
         include: {
-          user1: { select: { id: true, name: true, role: true, avatar: true } },
-          user2: { select: { id: true, name: true, role: true, avatar: true } },
+          user1: { select: { id: true, name: true, role: true, avatar: true, verificationTiers: true, verifiedAt: true } },
+          user2: { select: { id: true, name: true, role: true, avatar: true, verificationTiers: true, verifiedAt: true } },
           messages: { orderBy: { createdAt: 'desc' }, take: 1 },
         },
         orderBy: { lastMessageAt: 'desc' },
@@ -58,11 +90,24 @@ export async function GET(req: NextRequest) {
         const isUser1 = c.user1Id === userId;
         const otherUser = isUser1 ? c.user2 : c.user1;
         const displayName = otherUser?.role === 'client' && companyNameMap[otherUser.id] ? companyNameMap[otherUser.id] : (otherUser?.name || 'Unknown');
+        // Parse verificationTiers JSON string -> string[] for the client
+        let otherTiers: string[] = [];
+        try {
+          const parsed = JSON.parse((otherUser as any)?.verificationTiers || '[]');
+          if (Array.isArray(parsed)) otherTiers = parsed.filter((t: unknown) => typeof t === 'string');
+        } catch { /* ignore */ }
         return {
           id: c.id, user1Id: c.user1Id, user2Id: c.user2Id,
           lastMessage: c.lastMessage, lastMessageAt: c.lastMessageAt?.toISOString() || null,
           unreadCount: isUser1 ? c.unreadUser1 : c.unreadUser2,
-          otherUser: otherUser ? { name: displayName, role: otherUser.role, avatar: otherUser.avatar } : { name: 'Unknown', role: 'visitor', avatar: null },
+          otherUser: otherUser ? {
+            id: otherUser.id,
+            name: displayName,
+            role: otherUser.role,
+            avatar: otherUser.avatar,
+            verificationTiers: otherTiers,
+            verifiedAt: (otherUser as any)?.verifiedAt ? (otherUser as any).verifiedAt.toISOString() : null,
+          } : { id: null, name: 'Unknown', role: 'visitor', avatar: null, verificationTiers: [], verifiedAt: null },
           latestMessage: c.messages[0] ? { id: c.messages[0].id, content: c.messages[0].content, senderId: c.messages[0].senderId, createdAt: c.messages[0].createdAt.toISOString() } : null,
         };
       });
@@ -87,12 +132,54 @@ export async function POST(req: NextRequest) {
     if (!content || !content.trim()) return NextResponse.json({ error: 'Message content is required' }, { status: 400 });
 
     let convId = conversationId;
+    // resetConversation: when true, FIND any existing conversation between
+    // sender and recipient, DELETE all its messages, and reset its unread
+    // counters + lastMessage. This makes the chat appear "new" each time
+    // (used by the payment chat so prior payment attempts don't show up
+    // as history in the new chat).
+    //
+    // We can't create a second conversation row because the Conversation
+    // table has a UNIQUE(user1Id, user2Id) constraint. So instead we
+    // reset the existing one in place — same row, fresh content.
+    const resetConversation = body.resetConversation === true;
     if (!convId) {
       if (!recipientUserId) return NextResponse.json({ error: 'recipientUserId required' }, { status: 400 });
+
+      // ─── Block agent → client direct messaging ────────────────────────
+      // Agents cannot start a NEW conversation with a call center. They can
+      // only message other agents (and admin). To contact a call center,
+      // the agent must apply to a job posting, which creates the
+      // conversation implicitly with the application message.
+      // (Existing conversations created via application are still allowed
+      // to receive replies — those go through `conversationId`, not
+      // `recipientUserId`, so they skip this check.)
+      if (role === 'agent') {
+        const recipient = await db.user.findUnique({
+          where: { id: recipientUserId },
+          select: { role: true },
+        });
+        if (recipient && recipient.role === 'client') {
+          return NextResponse.json(
+            { error: 'You can only message other agents. To contact a call center, apply to one of their job postings.' },
+            { status: 403 },
+          );
+        }
+      }
+
       const [u1, u2] = normalizePair(userId, recipientUserId);
       const existing = await db.conversation.findUnique({ where: { user1Id_user2Id: { user1Id: u1, user2Id: u2 } } });
-      if (existing) { convId = existing.id; }
-      else {
+      if (existing) {
+        convId = existing.id;
+        // If resetConversation was requested, wipe all messages in this
+        // conversation so the chat starts fresh.
+        if (resetConversation) {
+          await db.message.deleteMany({ where: { conversationId: convId } });
+          await db.conversation.update({
+            where: { id: convId },
+            data: { lastMessage: null, lastMessageAt: new Date(0), unreadUser1: 0, unreadUser2: 0 },
+          });
+        }
+      } else {
         const conv = await db.conversation.create({ data: { user1Id: u1, user2Id: u2 } });
         convId = conv.id;
       }
@@ -127,13 +214,40 @@ export async function POST(req: NextRequest) {
         }
         const preview = content.trim().substring(0, 100) + (content.trim().length > 100 ? '...' : '');
 
+        // ─── Payment-chat detection ─────────────────────────────────────
+        // If the recipient is an admin AND the sender has a pending
+        // PaymentRequest, classify this notification as `payment_request`
+        // (not `message`). This makes the notification click navigate to
+        // the Payment Requests dashboard instead of the Messages tab.
+        let notifType = 'message';
+        let notifTitle = 'New Message from ' + senderName;
+        let notifPushUrl = 'https://167.86.124.101:4001/#messages';
+        let notifPushBody = senderName + ': ' + preview;
+        try {
+          const recipient = await db.user.findUnique({ where: { id: recipientId }, select: { role: true } });
+          if (recipient && (recipient.role === 'admin' || recipient.role === 'payment_taker')) {
+            const pendingPR = await db.paymentRequest.findFirst({
+              where: { userId, status: 'pending' },
+              orderBy: { createdAt: 'desc' },
+            });
+            if (pendingPR) {
+              notifType = 'payment_request';
+              notifTitle = 'Payment chat: ' + senderName;
+              notifPushUrl = 'https://167.86.124.101:4001/#payment-taker-dashboard';
+              notifPushBody = senderName + ': ' + preview;
+            }
+          }
+        } catch (detectErr) {
+          // Best-effort — fall back to default `message` type.
+        }
+
         await createNotification({
           userId: recipientId,
-          title: 'New Message from ' + senderName,
+          title: notifTitle,
           message: preview,
-          type: 'message',
-          pushBody: senderName + ': ' + preview,
-          pushUrl: 'https://167.86.124.101:4001/#messages',
+          type: notifType,
+          pushBody: notifPushBody,
+          pushUrl: notifPushUrl,
         });
       }
     } catch (notifErr) {

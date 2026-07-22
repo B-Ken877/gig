@@ -45,14 +45,22 @@ export async function POST(req: NextRequest) {
     const auth = await getAuth(req);
     if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
+    // Admins/support agents cannot create tickets — they manage existing ones.
+    if (auth.role === 'admin' || auth.role === 'payment_taker') {
+      return NextResponse.json({ error: 'Admins cannot create support tickets. Only agents and clients can create tickets.' }, { status: 403 });
+    }
+
     const body = await req.json();
     const { subject, description } = body;
     if (!subject || !description) {
       return NextResponse.json({ error: 'Subject and description are required' }, { status: 400 });
     }
 
+    // Find a support agent or admin to assign the ticket to.
+    // Prefer payment_taker, fall back to admin.
     const supportAgent = await db.user.findFirst({
-      where: { role: 'payment_taker', isActive: true },
+      where: { role: { in: ['payment_taker', 'admin'] }, isActive: true, accountStatus: 'active' },
+      orderBy: { role: 'asc' },
       select: { id: true },
     });
 

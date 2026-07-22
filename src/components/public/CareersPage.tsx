@@ -68,7 +68,7 @@ export default function CareersPage() {
             <motion.div variants={fadeUp} transition={{ duration: 0.5 }} className="mt-8">
               <Button size="lg" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
                 onClick={() => navigateTo('register-agent')}>
-                Register Now — 2,000 HTG/year <ArrowRight className="ml-2 h-4 w-4" />
+                Register Now — Free <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </motion.div>
           </motion.div>
@@ -86,7 +86,7 @@ export default function CareersPage() {
           </motion.div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { step: '1', icon: UserCheck, title: 'Register & Pay', desc: 'Create your account and complete the onboarding payment of 2,000 HTG per year. The payment team will guide you through the process via chat.' },
+              { step: '1', icon: UserCheck, title: 'Register & Pay', desc: 'Create your account for free. Pay 1,000 HTG / quarter only when you apply for a job. The admin will guide you through the payment via chat.' },
               { step: '2', icon: GraduationCap, title: 'Build Your Profile', desc: 'Add your skills, languages, experience level, and preferred shift. The more detailed your profile, the more discoverable you are to call centers.' },
               { step: '3', icon: Zap, title: 'Get Discovered', desc: 'Call centers browse the agent bank and message you directly. Respond, discuss the opportunity, and if it is a fit — you are hired.' },
             ].map(item => {
@@ -183,14 +183,14 @@ export default function CareersPage() {
             Ready to Start Your Remote Career?
           </h2>
           <p className="mt-4 text-lg text-white/60">
-            Join the platform for just 2,000 HTG per year and get discovered by call centers hiring now.
+            Join the platform for free. Pay 1,000 HTG / quarter only when you apply for a job. Get discovered by call centers hiring now.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Button size="lg" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
               onClick={() => navigateTo('register-agent')}>
               Register as Agent <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
-            <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10"
+            <Button size="lg" variant="outline" className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
               onClick={() => navigateTo('contact')}>
               Have Questions?
             </Button>

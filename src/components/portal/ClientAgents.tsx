@@ -12,9 +12,9 @@ import {
   VerifiedBadgeStyles,
   VerifiedBadgeStack,
   topVerificationTier,
-  GigScoreRing,
   type VerificationTier,
 } from '@/components/ui/verified-badge';
+import { UserProfileModal } from '@/components/ui/user-profile-modal';
 
 interface AgentWithUser {
   id: string; userId: string; status: string; country?: string;
@@ -40,6 +40,7 @@ export default function ClientAgents() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
   const loadAgents = () => {
     setLoading(true);
@@ -117,7 +118,6 @@ export default function ClientAgents() {
             const isExpanded = expandedId === a.id;
             const tiers = a.user?.verificationTiers || [];
             const topTier = topVerificationTier(tiers);
-            const score = a.user?.gigScore || 0;
             return (
               <Card key={a.id} className="hover:shadow-md transition-shadow relative overflow-hidden">
                 {/* Premium accent strip — only for verified agents */}
@@ -135,7 +135,12 @@ export default function ClientAgents() {
                 )}
                 <CardContent className="p-5">
                   <div className="flex items-start gap-3">
-                    <div className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setProfileUserId(a.user.id)}
+                      className="relative shrink-0 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+                      title="View full profile"
+                    >
                       <Avatar className="h-12 w-12 ring-2 ring-white shadow-sm">
                         {a.user?.avatar && <AvatarImage src={a.user.avatar} alt={a.user?.name} />}
                         <AvatarFallback className="bg-gradient-to-br from-[#16A34A] to-[#0B1A2E] text-white text-sm font-semibold">{a.user?.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</AvatarFallback>
@@ -146,10 +151,17 @@ export default function ClientAgents() {
                           <VerifiedBadge tier={topTier} iconOnly size="sm" verifiedAt={a.user?.verifiedAt} />
                         </div>
                       )}
-                    </div>
+                    </button>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <h3 className="text-sm font-semibold">{a.user?.name}</h3>
+                        <button
+                          type="button"
+                          onClick={() => setProfileUserId(a.user.id)}
+                          className="text-sm font-semibold text-[#16A34A] hover:underline cursor-pointer"
+                          title="View full profile"
+                        >
+                          {a.user?.name}
+                        </button>
                         {tiers.length > 1 && (
                           <span className="inline-flex items-center gap-0.5">
                             {tiers.filter(t => t !== topTier).slice(0, 2).map(t => (
@@ -163,12 +175,6 @@ export default function ClientAgents() {
                         {a.experience > 0 && <><span className="mx-1">·</span>{a.experience}yr exp</>}
                       </div>
                     </div>
-                    {/* Gig score ring — only show if score > 0 */}
-                    {score > 0 && (
-                      <div className="shrink-0">
-                        <GigScoreRing score={score} size={36} showLabel={false} />
-                      </div>
-                    )}
                   </div>
 
                   {tiers.length > 0 && (
@@ -267,6 +273,11 @@ export default function ClientAgents() {
           })}
         </div>
       )}
+      <UserProfileModal
+        userId={profileUserId}
+        open={!!profileUserId}
+        onClose={() => setProfileUserId(null)}
+      />
     </div>
   );
 }

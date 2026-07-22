@@ -13,7 +13,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAppStore, authFetch } from '@/lib/store';
+import { UserProfileModal } from '@/components/ui/user-profile-modal';
 import type { Review, ReviewableUser } from '@/lib/types';
+import {
+  VerifiedBadge,
+  VerifiedBadgeStyles,
+  topVerificationTier,
+  type VerificationTier,
+} from '@/components/ui/verified-badge';
 
 // ─── Star helpers ──────────────────────────────────────────────────────────
 
@@ -131,6 +138,8 @@ function AggregateHeader({
   const initials = (reviewee.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
   const accent = ratingColor(avgRating);
   const maxCount = Math.max(1, ...distribution.map(d => d.count));
+  const revieweeTiers: VerificationTier[] = (reviewee.verificationTiers || []) as VerificationTier[];
+  const revieweeTopTier = topVerificationTier(revieweeTiers);
   return (
     <div
       className="relative overflow-hidden rounded-2xl p-6 sm:p-7 mb-6"
@@ -139,6 +148,7 @@ function AggregateHeader({
         boxShadow: '0 12px 32px -8px rgba(11, 26, 46, 0.35)',
       }}
     >
+      <VerifiedBadgeStyles />
       {/* Decorative gradient blobs */}
       <div
         className="absolute -top-12 -right-12 w-56 h-56 rounded-full opacity-25 pointer-events-none"
@@ -149,15 +159,29 @@ function AggregateHeader({
         style={{ background: 'radial-gradient(circle, #FFB300 0%, transparent 70%)' }}
       />
       <div className="relative flex flex-col sm:flex-row gap-5 sm:gap-7 items-start">
-        <Avatar className="h-20 w-20 sm:h-24 sm:w-24 ring-4 ring-white/15 shrink-0 shadow-2xl">
-          {reviewee.avatar && <AvatarImage src={reviewee.avatar} alt={reviewee.name} />}
-          <AvatarFallback className="bg-gradient-to-br from-[#16A34A] to-[#0B1A2E] text-white text-2xl font-bold">
-            {initials}
-          </AvatarFallback>
-        </Avatar>
+        <div className="relative shrink-0">
+          <Avatar className="h-20 w-20 sm:h-24 sm:w-24 ring-4 ring-white/15 shadow-2xl">
+            {reviewee.avatar && <AvatarImage src={reviewee.avatar} alt={reviewee.name} />}
+            <AvatarFallback className="bg-gradient-to-br from-[#16A34A] to-[#0B1A2E] text-white text-2xl font-bold">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          {revieweeTopTier && (
+            <span className="absolute -bottom-1 -right-1">
+              <VerifiedBadge tier={revieweeTopTier} iconOnly size="md" verifiedAt={reviewee.verifiedAt} />
+            </span>
+          )}
+        </div>
         <div className="flex-1 min-w-0 text-white">
           <div className="flex flex-wrap items-center gap-2 mb-1">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white">{reviewee.name}</h2>
+            <button
+              type="button"
+              onClick={() => onShowProfile?.(reviewee.id)}
+              className="text-2xl sm:text-3xl font-bold text-white hover:underline cursor-pointer"
+              title="View full profile"
+            >
+              {reviewee.name}
+            </button>
             <Badge
               className="bg-white/10 text-white hover:bg-white/15 border border-white/10 capitalize"
             >
@@ -233,27 +257,47 @@ function AggregateHeader({
   );
 }
 
-function ReviewCard({ review, canSeeReviewer }: { review: Review; canSeeReviewer: boolean }) {
+function ReviewCard({ review, canSeeReviewer, onShowProfile }: { review: Review; canSeeReviewer: boolean; onShowProfile?: (userId: string) => void; }) {
   const reviewer = review.reviewer;
   const displayName = reviewer?.companyName || reviewer?.name || 'Anonymous';
   const initials = displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  const reviewerTiers: VerificationTier[] = (reviewer?.verificationTiers || []) as VerificationTier[];
+  const reviewerTopTier = topVerificationTier(reviewerTiers);
   return (
     <Card className="border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
       <CardContent className="p-5">
         <div className="flex items-start gap-3">
-          <Avatar className="h-10 w-10 ring-1 ring-gray-100 shrink-0">
-            {reviewer?.avatar && <AvatarImage src={reviewer.avatar} alt={displayName} />}
-            <AvatarFallback className="bg-gradient-to-br from-[#0B1A2E] to-[#16A34A] text-white text-xs font-semibold">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
+          <button
+            type="button"
+            onClick={() => reviewer?.id && onShowProfile?.(reviewer.id)}
+            className="relative shrink-0 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+            title="View full profile"
+          >
+            <Avatar className="h-10 w-10 ring-1 ring-gray-100">
+              {reviewer?.avatar && <AvatarImage src={reviewer.avatar} alt={displayName} />}
+              <AvatarFallback className="bg-gradient-to-br from-[#0B1A2E] to-[#16A34A] text-white text-xs font-semibold">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            {reviewerTopTier && (
+              <span className="absolute -bottom-1 -right-1">
+                <VerifiedBadge tier={reviewerTopTier} iconOnly size="xs" verifiedAt={reviewer?.verifiedAt} />
+              </span>
+            )}
+          </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-semibold text-gray-900 truncate">
+                  <button
+                    type="button"
+                    onClick={() => reviewer?.id && canSeeReviewer && onShowProfile?.(reviewer.id)}
+                    disabled={!canSeeReviewer || !reviewer?.id}
+                    className="font-semibold text-gray-900 truncate hover:text-[#16A34A] hover:underline cursor-pointer disabled:cursor-default disabled:hover:text-gray-900 disabled:hover:no-underline"
+                    title={canSeeReviewer && reviewer?.id ? 'View full profile' : ''}
+                  >
                     {canSeeReviewer ? displayName : 'Verified reviewer'}
-                  </span>
+                  </button>
                   {reviewer?.role === 'client' && (
                     <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">Call Center</Badge>
                   )}
@@ -474,6 +518,7 @@ function ReviewForm({
 
 export default function ReviewsPage() {
   const { currentUser, pendingReviewUserId, pendingReviewScrollToForm, setPendingReviewUserId, addToast } = useAppStore();
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<ReviewableUser[] | null>(null);
@@ -661,20 +706,44 @@ export default function ReviewsPage() {
                   </div>
                 ) : (
                   searchResults.map(u => (
-                    <button
+                    <div
                       key={u.id}
                       onClick={() => handleSelectResult(u)}
-                      className="w-full text-left flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-[#16A34A]/30 hover:bg-green-50/40 transition-colors group"
+                      className="w-full text-left flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-[#16A34A]/30 hover:bg-green-50/40 transition-colors group cursor-pointer"
                     >
-                      <Avatar className="h-10 w-10 ring-1 ring-gray-100 shrink-0">
-                        {u.avatar && <AvatarImage src={u.avatar} alt={u.name} />}
-                        <AvatarFallback className="bg-gradient-to-br from-[#16A34A] to-[#0B1A2E] text-white text-xs font-semibold">
-                          {u.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setProfileUserId(u.id); }}
+                        className="relative shrink-0 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+                        title="View full profile"
+                      >
+                        <Avatar className="h-10 w-10 ring-1 ring-gray-100">
+                          {u.avatar && <AvatarImage src={u.avatar} alt={u.name} />}
+                          <AvatarFallback className="bg-gradient-to-br from-[#16A34A] to-[#0B1A2E] text-white text-xs font-semibold">
+                            {u.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
+                          </AvatarFallback>
+                        </Avatar>
+                        {topVerificationTier((u.verificationTiers || []) as VerificationTier[]) && (
+                          <span className="absolute -bottom-1 -right-1">
+                            <VerifiedBadge
+                              tier={topVerificationTier((u.verificationTiers || []) as VerificationTier[])!}
+                              iconOnly
+                              size="xs"
+                              verifiedAt={u.verifiedAt}
+                            />
+                          </span>
+                        )}
+                      </button>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-gray-900 truncate">{u.name}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setProfileUserId(u.id); }}
+                            className="font-semibold text-gray-900 truncate hover:text-[#16A34A] hover:underline cursor-pointer"
+                            title="View full profile"
+                          >
+                            {u.name}
+                          </button>
                           <Badge
                             variant="secondary"
                             className="text-[10px] px-1.5 py-0 h-4"
@@ -701,7 +770,7 @@ export default function ReviewsPage() {
                           <span className="text-xs text-gray-400">No reviews</span>
                         )}
                       </div>
-                    </button>
+                    </div>
                   ))
                 )}
               </div>
@@ -735,6 +804,7 @@ export default function ReviewsPage() {
                 avgRating={aggregate?.avgRating || 0}
                 reviewCount={aggregate?.reviewCount || 0}
                 distribution={aggregate?.distribution || []}
+                onShowProfile={setProfileUserId}
               />
 
               {/* Review form (only if cross-role + logged in) */}
@@ -787,6 +857,11 @@ export default function ReviewsPage() {
           )}
         </>
       )}
+      <UserProfileModal
+        userId={profileUserId}
+        open={!!profileUserId}
+        onClose={() => setProfileUserId(null)}
+      />
     </div>
   );
 }

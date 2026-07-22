@@ -40,9 +40,27 @@ model User {
   verifiedBy        String?
   gigScore          Int      @default(0)
   gigScoreUpdatedAt DateTime?
+  // ─── Subscription / Payment gating ────────────────────────────────────
+  // Registration is FREE for everyone. Payment is only required when an
+  // agent tries to apply for a job, or when a call center tries to access
+  // the "Job Links" tab. The admin toggles `paid=true` after approving a
+  // payment in the payment chat. `paidUntil` is computed from the role's
+  // billing cycle (agent = +3 months, client = +12 months). `paymentTier`
+  // records which tier was purchased: 'agent_quarterly' | 'client_yearly'.
+  paid              Boolean  @default(false)
+  paidUntil         DateTime?
+  paymentTier       String?
   // ─── Reviews (Trustpilot-style) ───────────────────────────────────────
   reviewsGiven     Review[] @relation("ReviewReviewer")
   reviewsReceived  Review[] @relation("ReviewReviewee")
+  // ─── Group Chat (one PER JOB per client owner; agents can be members of many) ─
+  groupChatsOwned   GroupChat[]
+  groupChatMembers  GroupChatMember[]
+  groupChatMessages GroupChatMessage[]
+  // ─── AI Training usage tracking (3 sessions per 24h) ──────────────────
+  aiTrainingUsage   AiTrainingUsage[]
+  // ─── Marketplace ─────────────────────────────────────────────────────
+  productOrders     ProductOrder[]
   @@index([role])
   @@index([email])
 }
@@ -138,6 +156,7 @@ model CallCenterNeed {
   updatedAt       DateTime @updatedAt
 
   client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  groupChats      GroupChat[]
 
   @@index([clientId])
   @@index([isActive])
@@ -478,4 +497,126 @@ model Review {
   @@index([revieweeId])
   @@index([reviewerId])
   @@index([rating])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Group Chat — ONE PER (client, need/job). Agents are members.
+// Created lazily: on first hire for a need OR when the client opens the page.
+// The composite @@unique([clientId, needId]) guarantees at most one chat per
+// (client, need). needId is optional to allow a legacy "general" chat that
+// predates this scoping (NULLs are not treated as equal by SQLite, so multiple
+// NULL-needId rows are technically allowed, but the application layer always
+// sets needId on new chats).
+// ─────────────────────────────────────────────────────────────
+model GroupChat {
+  id          String   @id @default(cuid())
+  clientId    String   // owner = User.id of the client
+  needId      String?  // scope = CallCenterNeed.id (one chat per client+need)
+  title       String   @default("Team Chat")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client      User             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  need        CallCenterNeed?  @relation(fields: [needId], references: [id], onDelete: Cascade)
+  members     GroupChatMember[]
+  messages    GroupChatMessage[]
+
+  @@unique([clientId, needId])
+  @@index([clientId])
+  @@index([needId])
+}
+
+model GroupChatMember {
+  id            String   @id @default(cuid())
+  groupChatId   String
+  userId        String   // agent user id
+  addedById     String   // client user id who added them
+  addedAt       DateTime @default(now())
+
+  groupChat     GroupChat @relation(fields: [groupChatId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupChatId, userId])
+  @@index([userId])
+}
+
+model GroupChatMessage {
+  id            String   @id @default(cuid())
+  groupChatId   String
+  senderId      String
+  senderRole    String?
+  content       String
+  isRead        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  groupChat     GroupChat @relation(fields: [groupChatId], references: [id], onDelete: Cascade)
+  sender        User      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([groupChatId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// AI TRAINING USAGE — tracks how many training sessions a user has consumed.
+// Enforces 3 sessions per rolling 24-hour window per user.
+// A "session" = one scenario generation (Practice or Learn mode) OR
+// one Live AI Coach connection.
+// ============================================================================
+model AiTrainingUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// MARKETPLACE — Products (headsets, routers, laptops) that agents and call
+// centers can browse and buy. Buying opens a 1:1 chat with the admin to
+// confirm the order (same pattern as the payment chat flow).
+// ============================================================================
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  category    String   // 'headset' | 'router' | 'laptop' | 'other'
+  price       Float
+  currency    String   @default("USD")
+  image       String   // path like /products/jabra-headset-1.jpg
+  specs       String   @default("{}") // JSON: brand, model, IP location, RAM, etc.
+  isActive    Boolean  @default(true)
+  stock       Int      @default(-1) // -1 = unlimited
+  featured    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders      ProductOrder[]
+
+  @@index([category])
+  @@index([isActive])
+  @@index([featured])
+}
+
+model ProductOrder {
+  id             String   @id @default(cuid())
+  productId      String
+  buyerId        String
+  buyerRole      String
+  status         String   @default("pending") // pending | confirmed | shipped | delivered | cancelled
+  conversationId String?  // links to the 1:1 DM with admin
+  message        String   // pre-filled message sent to admin
+  quantity       Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  buyer          User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+
+  @@index([buyerId])
+  @@index([status])
+  @@index([productId])
 }

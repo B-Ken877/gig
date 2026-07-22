@@ -43,7 +43,7 @@ const HOW_IT_WORKS = [
     step: '01',
     icon: UserCheck,
     title: 'Register & Pay',
-    description: 'Agents and call centers create an account and complete a simple onboarding payment to join the platform.',
+    description: 'Agents and call centers create a free account to join the platform. Payment is only required later — agents pay when applying for a job, call centers pay when accessing Job Links.',
   },
   {
     step: '02',
@@ -124,7 +124,7 @@ export default function HomePage() {
                 onClick={() => navigateTo('register-agent')}>
                 Get Started <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
-              <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10"
+              <Button size="lg" variant="outline" className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
                 onClick={() => navigateTo('services')}>
                 Explore Services
               </Button>
@@ -219,7 +219,7 @@ export default function HomePage() {
                 Whether you specialize in customer support, sales, tech support, or chat — there is a company looking for someone exactly like you.
               </p>
               <ul className="mt-6 space-y-3">
-                {['Annual fee of just 2,000 HTG/year', 'No assessments or screening required', 'Direct contact with hiring call centers', 'Work remotely from your country'].map(t => (
+                {['Free to register — 1,000 HTG / 3 months only when you apply for a job', 'No assessments or screening required', 'Direct contact with hiring call centers', 'Work remotely from your country'].map(t => (
                   <li key={t} className="flex items-center gap-2 text-sm text-gray-700">
                     <CheckCircle2 className="h-4 w-4 text-[#16A34A] shrink-0" />{t}
                   </li>
@@ -251,7 +251,7 @@ export default function HomePage() {
                 Post your staffing needs, share job listings, and message candidates — all from one dashboard.
               </p>
               <ul className="mt-6 space-y-3">
-                {['Browse a curated bank of skilled agents', 'Post job listings with direct apply links', 'Message agents directly through the platform', 'Monthly fee of just 2,000 HTG/month'].map(t => (
+                {['Browse a curated bank of skilled agents', 'Post job listings with direct apply links', 'Message agents directly through the platform', 'Free to register — 3,000 HTG / year only when you access Job Links'].map(t => (
                   <li key={t} className="flex items-center gap-2 text-sm text-gray-700">
                     <CheckCircle2 className="h-4 w-4 text-[#16A34A] shrink-0" />{t}
                   </li>
@@ -294,6 +294,55 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── Gig Solutions Academy ── */}
+      <section className="py-20 sm:py-28 bg-gray-50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger} className="grid lg:grid-cols-2 gap-12 items-center">
+            {/* Left: copy + CTA */}
+            <motion.div variants={fadeUp}>
+              <span className="mb-3 inline-block text-xs font-semibold tracking-wider uppercase text-[#16A34A]">Gig Solutions Academy</span>
+              <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+                From Call Center Agent to <span className="text-[#16A34A]">Professional Translator</span>
+              </h2>
+              <p className="mt-4 text-gray-600 leading-relaxed">
+                You already have the communication skills. You already handle multilingual conversations daily.
+                Our book — <em>The Translator's Blueprint</em> — shows you exactly how to pivot into professional
+                translation and earn more doing what you already do best.
+              </p>
+              <ul className="mt-6 space-y-3">
+                {[
+                  '500+ pages of practical, no-fluff guidance',
+                  'Industry-specific vocabulary sheets for 10+ specializations',
+                  'Step-by-step portfolio building with zero experience',
+                  'Insider tips to pass certification exams on your first attempt',
+                ].map(t => (
+                  <li key={t} className="flex items-center gap-2 text-sm text-gray-700">
+                    <CheckCircle2 className="h-4 w-4 text-[#16A34A] shrink-0" />{t}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Button className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
+                  onClick={() => navigateTo('academy')}>
+                  Explore the Academy <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+                <a href="https://wa.me/50947579322?text=Hello%20Gig%20Solutions%20Academy!%20I%20want%20to%20buy%20the%20sample%20chapter%20for%20$5."
+                   target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" className="border-[#16A34A] text-[#16A34A] hover:bg-[#16A34A] hover:text-white">
+                    Get Sample Chapter — $5
+                  </Button>
+                </a>
+              </div>
+            </motion.div>
+            {/* Right: book cover */}
+            <motion.div variants={fadeUp} className="flex justify-center">
+              <img src="/academy-book-cover.jpg" alt="The Translator's Blueprint — book cover"
+                   className="w-64 sm:w-72 rounded-xl shadow-2xl transition-transform hover:scale-105" />
+            </motion.div>
+          </motion.div>
+        </div>
+      </section>
+
       {/* ── CTA ── */}
       <section className="navy-gradient py-20 sm:py-28">
         <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 text-center">
@@ -308,7 +357,7 @@ export default function HomePage() {
               onClick={() => navigateTo('register-agent')}>
               Create Your Account <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
-            <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10"
+            <Button size="lg" variant="outline" className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
               onClick={() => navigateTo('contact')}>
               Contact Us
             </Button>

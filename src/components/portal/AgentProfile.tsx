@@ -73,8 +73,9 @@ export default function AgentProfile() {
   useEffect(() => {
     if (!currentUser) return;
     setAvatarUrl(currentUser.avatar || null);
-    fetch(`/api/agents?userId=${currentUser.id}`)
-      .then((r) => r.json())
+    authFetch(`/api/agents?userId=${currentUser.id}`)
+      
+      .then((r) => { if (!r.ok) throw new Error("Profile load failed"); return r.json(); })
       .then((data) => {
         const a = Array.isArray(data) ? data[0] : data;
         if (a) {

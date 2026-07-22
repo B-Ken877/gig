@@ -5,13 +5,19 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore, authFetch } from '@/lib/store';
+import {
+  VerifiedBadge,
+  VerifiedBadgeStyles,
+  topVerificationTier,
+  type VerificationTier,
+} from '@/components/ui/verified-badge';
+import { UserProfileModal } from '@/components/ui/user-profile-modal';
 
 interface Application {
   notificationId: string;
   agentId: string;
   agentName: string;
   agentEmail: string;
-  agentPhone: string;
   agentCountry: string;
   agentLanguages: string[];
   agentExperience: number;
@@ -22,13 +28,18 @@ interface Application {
   needDescription: string;
   companyName: string;
   clientId: string;
+  clientUserId?: string | null;
   appliedAt: string;
+  // Call-center verification (added by /api/call-center-needs/interest GET)
+  clientTiers?: string[];
+  clientVerifiedAt?: string | null;
 }
 
 export default function AgentMyApplications() {
   const { currentUser, navigateTo, addToast } = useAppStore();
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadApplications = () => {
@@ -70,6 +81,7 @@ export default function AgentMyApplications() {
 
   return (
     <div className="space-y-6">
+      <VerifiedBadgeStyles />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -100,7 +112,10 @@ export default function AgentMyApplications() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {applications.map(app => (
+          {applications.map(app => {
+            const clientTiers: VerificationTier[] = (app.clientTiers || []) as VerificationTier[];
+            const clientTopTier = topVerificationTier(clientTiers);
+            return (
             <Card key={app.notificationId} className="overflow-hidden hover:shadow-md transition-shadow">
               <CardContent className="p-0">
                 <div className="flex flex-col lg:flex-row">
@@ -114,8 +129,20 @@ export default function AgentMyApplications() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <Building2 className="h-3 w-3" />{app.companyName || 'Call Center'}
+                      <span className="flex items-center gap-1.5">
+                        <Building2 className="h-3 w-3" />
+                        <button
+                          type="button"
+                          onClick={() => app.clientUserId && setProfileUserId(app.clientUserId)}
+                          className="text-[#16A34A] hover:underline cursor-pointer disabled:cursor-default disabled:text-inherit disabled:no-underline"
+                          title={app.clientUserId ? 'View full profile' : ''}
+                          disabled={!app.clientUserId}
+                        >
+                          {app.companyName || 'Call Center'}
+                        </button>
+                        {clientTopTier && (
+                          <VerifiedBadge tier={clientTopTier} size="xs" verifiedAt={app.clientVerifiedAt} />
+                        )}
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />Applied {new Date(app.appliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -143,9 +170,15 @@ export default function AgentMyApplications() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
+      <UserProfileModal
+        userId={profileUserId}
+        open={!!profileUserId}
+        onClose={() => setProfileUserId(null)}
+      />
     </div>
   );
 }

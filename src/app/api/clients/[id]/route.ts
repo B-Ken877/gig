@@ -28,11 +28,20 @@ export async function GET(
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
 
+    // AUTH: phone is private. Only the OWNER or an admin may see phone.
+    const isAdmin = auth.role === 'admin' || auth.role === 'payment_taker';
+    const isOwner = !!clientRecord.userId && auth.userId === clientRecord.userId;
+    const canSeePhone = isAdmin || isOwner;
+    const userWithoutPhone = clientRecord.user
+      ? { ...clientRecord.user, phone: canSeePhone ? clientRecord.user.phone : undefined }
+      : clientRecord.user;
     return NextResponse.json({
       client: {
         ...clientRecord,
+        user: userWithoutPhone,
         // surface the user's phone at the top level so the profile form can read it
-        phone: clientRecord.phone || clientRecord.user?.phone || null,
+        // — but only if the requester is the owner or admin.
+        phone: canSeePhone ? (clientRecord.phone || clientRecord.user?.phone || null) : undefined,
         createdAt: clientRecord.createdAt?.toISOString(),
         updatedAt: clientRecord.updatedAt?.toISOString(),
       },

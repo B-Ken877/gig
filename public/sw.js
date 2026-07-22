@@ -5,7 +5,7 @@ const NOTIFICATION_BADGE = '/notification-badge.png';   // 72x72 monochrome PNG 
 
 // Bump on every behavior change so existing clients re-activate the SW.
 // v3: ensures push events fire for installed PWAs even when no client tab is open.
-const SW_CACHE = 'gig-sw-v3';
+const SW_CACHE = 'gig-sw-v4';
 
 // --- Lifecycle --------------------------------------------------------------
 self.addEventListener('install', (event) => {

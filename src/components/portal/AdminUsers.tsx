@@ -1,18 +1,21 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Users, AlertCircle, RefreshCw, Search, Shield, Ban, CheckCircle, XCircle, BadgeCheck, Star, Crown, ShieldCheck, Sparkles } from 'lucide-react';
+import { Users, AlertCircle, RefreshCw, Search, Shield, Ban, CheckCircle, XCircle, BadgeCheck, Star, Crown, ShieldCheck, Sparkles, CreditCard, DollarSign, Clock } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAppStore } from '@/lib/store';
+import { cn } from '@/lib/utils';
 import {
   VerifiedBadge,
   VerifiedBadgeStyles,
   VERIFICATION_TIERS,
+  topVerificationTier,
   type VerificationTier,
 } from '@/components/ui/verified-badge';
+import { UserProfileModal } from '@/components/ui/user-profile-modal';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
+/* Dialog & inline-modal icons removed — using shared UserProfileModal */
 
 interface AdminUserRow {
   id: string;
@@ -36,6 +40,10 @@ interface AdminUserRow {
   verifiedAt?: string | null;
   verifiedBy?: string | null;
   gigScore?: number;
+  // Subscription
+  paid?: boolean;
+  paidUntil?: string | null;
+  paymentTier?: string | null;
 }
 
 const TIER_DESCRIPTIONS: Record<VerificationTier, string> = {
@@ -54,6 +62,13 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
+
+  // Open the shared full-profile modal for a user.
+  // The modal fetches the user record itself via /api/users/[id].
+  const openUserProfile = (userId: string) => {
+    setProfileUserId(userId);
+  };
 
   const loadUsers = () => {
     if (!currentUser) return;
@@ -114,7 +129,48 @@ export default function AdminUsers() {
     setActionLoading(null);
   };
 
-  const roleColors: Record<string, string> = { agent: 'bg-blue-100 text-blue-800', client: 'bg-purple-100 text-purple-800', payment_taker: 'bg-amber-100 text-amber-800', admin: 'bg-red-100 text-red-800', recruiter: 'bg-gray-100 text-gray-800' };
+  // ─── Toggle paid subscription ────────────────────────────────────────
+  // Sets paid=true (with paidUntil = +3 months for agents, +12 months for
+  // call centers) or paid=false (revokes access). Used after the admin
+  // receives payment in the payment chat.
+  const handleTogglePaid = async (userId: string, paid: boolean, role: string) => {
+    setActionLoading(userId + '-paid');
+    try {
+      const res = await fetch('/api/users/mark-paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': 'admin' },
+        body: JSON.stringify({ userId, paid }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(prev => prev.map(u => u.id === userId ? {
+          ...u,
+          paid: data.user?.paid,
+          paidUntil: data.user?.paidUntil,
+          paymentTier: data.user?.paymentTier,
+        } : u));
+        const roleLabel = role === 'agent' ? 'Agent' : 'Call Center';
+        if (paid) {
+          const until = data.paidUntil ? new Date(data.paidUntil).toLocaleDateString() : '';
+          addToast({
+            title: `${roleLabel} marked as paid`,
+            description: `Subscription active until ${until} (${data.amount} ${data.currency}).`,
+            variant: 'success',
+          });
+        } else {
+          addToast({ title: 'Subscription revoked', variant: 'default' });
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        addToast({ title: 'Failed', description: err.error || 'Try again', variant: 'destructive' });
+      }
+    } catch {
+      addToast({ title: 'Network error', variant: 'destructive' });
+    }
+    setActionLoading(null);
+  };
+
+  const roleColors: Record<string, string> = { agent: 'bg-blue-100 text-blue-800', client: 'bg-purple-100 text-purple-800', admin: 'bg-red-100 text-red-800', recruiter: 'bg-gray-100 text-gray-800' };
   const statusColors: Record<string, string> = { active: 'bg-green-100 text-green-800', pending_approval: 'bg-amber-100 text-amber-800', rejected: 'bg-red-100 text-red-800', suspended: 'bg-gray-100 text-gray-800' };
 
   const getDisplayName = (u: AdminUserRow) => u.role === 'client' && u.companyName ? u.companyName : u.name;
@@ -153,7 +209,7 @@ export default function AdminUsers() {
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." className="pl-10" />
         </div>
         <div className="flex gap-2">
-          {['', 'agent', 'client', 'payment_taker', 'admin'].map(r => (
+          {['', 'agent', 'client', 'admin'].map(r => (
             <Button key={r || 'all'} variant={filter === r ? 'default' : 'outline'} size="sm" onClick={() => setFilter(r)} className={filter === r ? 'bg-[#16A34A] text-white hover:bg-[#16A34A]/90' : ''}>{r || 'All'}</Button>
           ))}
         </div>
@@ -174,6 +230,7 @@ export default function AdminUsers() {
             <th className="px-4 py-3 text-left font-medium text-gray-500">Email</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Role</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-500">Subscription</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Badges</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Joined</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Actions</th>
@@ -182,25 +239,69 @@ export default function AdminUsers() {
             {filtered.map(u => {
               const dn = getDisplayName(u);
               const tiers = u.verificationTiers || [];
+              const topTier = topVerificationTier(tiers as VerificationTier[]);
+              // Display: payment_taker is now treated as admin
+              const displayRole = u.role === 'payment_taker' ? 'admin' : u.role;
+              // Subscription status for agents and call centers
+              const isBillable = u.role === 'agent' || u.role === 'client';
+              const paidUntilDate = u.paidUntil ? new Date(u.paidUntil) : null;
+              const isSubscriptionActive = isBillable && u.paid && paidUntilDate && paidUntilDate > new Date();
+              const isExpired = isBillable && u.paid && paidUntilDate && paidUntilDate <= new Date();
+              const paidLoading = actionLoading === u.id + '-paid';
               return (
               <tr key={u.id} className="border-b last:border-0 hover:bg-gray-50">
                 <td className="px-4 py-3 font-medium">
-                  <div className="flex items-center gap-2">
-                    <Avatar className="h-7 w-7">
-                      {u.avatar && <AvatarImage src={u.avatar} alt={dn} />}
-                      <AvatarFallback className="bg-gray-200 text-gray-700 text-[10px] font-bold">{getInitials(dn)}</AvatarFallback>
-                    </Avatar>
+                  <button
+                    type="button"
+                    onClick={() => openUserProfile(u.id)}
+                    className="flex items-center gap-2 text-left hover:bg-gray-100 -mx-1 px-1 py-0.5 rounded transition-colors w-full"
+                    title="View full profile"
+                  >
+                    <div className="relative shrink-0">
+                      <Avatar className="h-7 w-7">
+                        {u.avatar && <AvatarImage src={u.avatar} alt={dn} />}
+                        <AvatarFallback className="bg-gray-200 text-gray-700 text-[10px] font-bold">{getInitials(dn)}</AvatarFallback>
+                      </Avatar>
+                      {topTier && (
+                        <span className="absolute -bottom-1 -right-1">
+                          <VerifiedBadge tier={topTier} iconOnly size="xs" verifiedAt={u.verifiedAt} />
+                        </span>
+                      )}
+                    </div>
                     <div className="min-w-0">
-                      <div className="truncate">{dn}</div>
+                      <div className="truncate text-[#16A34A] hover:underline">{dn}</div>
                       {u.role === 'client' && u.companyName && u.name !== u.companyName && (
                         <div className="text-[10px] text-gray-400 truncate">Contact: {u.name}</div>
                       )}
                     </div>
-                  </div>
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-gray-500">{u.email}</td>
-                <td className="px-4 py-3"><span className={"px-2 py-1 rounded-full text-xs font-medium " + (roleColors[u.role] || '')}>{u.role.replace('_', ' ')}</span></td>
+                <td className="px-4 py-3"><span className={"px-2 py-1 rounded-full text-xs font-medium " + (roleColors[displayRole] || roleColors[u.role] || '')}>{displayRole.replace('_', ' ')}</span></td>
                 <td className="px-4 py-3"><span className={"px-2 py-1 rounded-full text-xs font-medium " + (statusColors[u.accountStatus] || '')}>{u.accountStatus.replace('_', ' ')}</span></td>
+                <td className="px-4 py-3">
+                  {!isBillable ? (
+                    <span className="text-[10px] text-gray-400">—</span>
+                  ) : isSubscriptionActive ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 w-fit">
+                        <CheckCircle className="h-2.5 w-2.5" /> Paid
+                      </span>
+                      <span className="text-[10px] text-gray-400">until {paidUntilDate!.toLocaleDateString()}</span>
+                    </div>
+                  ) : isExpired ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 w-fit">
+                        <XCircle className="h-2.5 w-2.5" /> Expired
+                      </span>
+                      <span className="text-[10px] text-gray-400">on {paidUntilDate!.toLocaleDateString()}</span>
+                    </div>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700">
+                      <Clock className="h-2.5 w-2.5" /> Unpaid
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   {tiers.length > 0 ? (
                     <div className="flex items-center flex-wrap gap-1">
@@ -218,6 +319,31 @@ export default function AdminUsers() {
                 <td className="px-4 py-3 text-gray-500">{new Date(u.createdAt).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1">
+                    {/* Mark Paid toggle — only for agents and call centers */}
+                    {isBillable && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={cn(
+                          'h-7 px-2 text-xs gap-1 shrink-0',
+                          isSubscriptionActive
+                            ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'
+                            : 'border-amber-300 text-amber-700 hover:bg-amber-50'
+                        )}
+                        disabled={paidLoading}
+                        title={isSubscriptionActive ? 'Revoke subscription' : 'Mark as paid (1,000 HTG/3mo agent · 3,000 HTG/yr call center)'}
+                        onClick={() => handleTogglePaid(u.id, !isSubscriptionActive, u.role)}
+                      >
+                        {paidLoading ? (
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        ) : isSubscriptionActive ? (
+                          <><CreditCard className="h-3.5 w-3.5" /><span className="hidden md:inline">Revoke</span></>
+                        ) : (
+                          <><DollarSign className="h-3.5 w-3.5" /><span className="hidden md:inline">Mark Paid</span></>
+                        )}
+                      </Button>
+                    )}
+
                     {/* Verification dropdown */}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -286,10 +412,17 @@ export default function AdminUsers() {
               </tr>
               );
             })}
-            {filtered.length === 0 && (<tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400"><Users className="h-10 w-10 mx-auto mb-2 opacity-30" />No users found</td></tr>)}
+            {filtered.length === 0 && (<tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400"><Users className="h-10 w-10 mx-auto mb-2 opacity-30" />No users found</td></tr>)}
           </tbody>
         </table></div></CardContent></Card>
       )}
+
+      {/* Shared full-profile modal — opens when admin clicks a user's name */}
+      <UserProfileModal
+        userId={profileUserId}
+        open={!!profileUserId}
+        onClose={() => setProfileUserId(null)}
+      />
     </div>
   );
 }

@@ -23,8 +23,8 @@ const FEATURES = [
 const PRICING = [
   {
     title: 'Call Center Plan',
-    price: '2,000 HTG',
-    period: '/month',
+    price: '3,000 HTG',
+    period: '/year',
     features: [
       'Access to the full agent bank',
       'Unlimited direct messaging with agents',
@@ -38,8 +38,8 @@ const PRICING = [
   },
   {
     title: 'Agent Plan',
-    price: '2,000 HTG',
-    period: '/year',
+    price: '1,000 HTG',
+    period: '/quarter',
     usd: '',
     features: [
       'Visible profile in the agent bank',
@@ -55,7 +55,7 @@ const PRICING = [
 ];
 
 const STEPS = [
-  { step: '1', title: 'Register & Pay', desc: 'Create your call center account and complete the monthly fee of 2,000 HTG via our payment team.' },
+  { step: '1', title: 'Register & Pay', desc: 'Create your call center account for free. Pay 3,000 HTG / year only when you access Job Links.' },
   { step: '2', title: 'Set Up Your Profile', desc: 'Add your company name, industry, and link. Then start posting needs and browsing agents.' },
   { step: '3', title: 'Find & Connect', desc: 'Use the agent bank to find candidates. Message them directly, discuss the role, and hire.' },
   { step: '4', title: 'Manage & Grow', desc: 'Post job listings, update your staffing needs, and keep building your remote team.' },
@@ -195,7 +195,7 @@ export default function ForClientsPage() {
               onClick={() => navigateTo('register-client')}>
               Get Started <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
-            <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10"
+            <Button size="lg" variant="outline" className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
               onClick={() => navigateTo('contact')}>
               Contact Sales
             </Button>

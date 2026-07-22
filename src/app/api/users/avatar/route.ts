@@ -42,8 +42,13 @@ export async function POST(req: NextRequest) {
     const filename = `${userId}-${Date.now()}.jpg`;
     const outputPath = path.join(AVATAR_DIR, filename);
 
-    // Resize to 256x256 square (cover fit) and convert to JPEG
+    // Resize to 256x256 square (cover fit) and convert to JPEG.
+    // .rotate() (no args) tells sharp to read the EXIF Orientation tag
+    // and physically rotate the pixels before resizing. Without this,
+    // photos taken on a phone in portrait mode come out upside-down or
+    // sideways because the sensor data is landscape + an EXIF tag.
     await sharp(buffer)
+      .rotate()
       .resize(256, 256, { fit: 'cover', position: 'center' })
       .jpeg({ quality: 85 })
       .toFile(outputPath);

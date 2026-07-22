@@ -23,12 +23,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isAuthenticated && currentUser) {
-      if (currentUser.accountStatus === 'pending_approval') {
-        navigateTo('pending-payment');
-      } else {
-        const dash = ROLE_DASHBOARD[currentUser.role] || 'home';
-        navigateTo(dash as never);
-      }
+      const dash = ROLE_DASHBOARD[currentUser.role] || 'home';
+      navigateTo(dash as never);
     }
   }, [isAuthenticated, currentUser]);
 
@@ -40,11 +36,6 @@ export default function LoginPage() {
       const store = useAppStore.getState();
       const user = store.currentUser;
       if (!user) return;
-
-      if (user.accountStatus === 'pending_approval') {
-        navigateTo('pending-payment');
-        return;
-      }
 
       addToast({ title: 'Welcome back!', description: `Signed in as ${user.name}`, variant: 'success' });
       const dash = ROLE_DASHBOARD[user.role] || 'home';
@@ -59,23 +50,34 @@ export default function LoginPage() {
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); handleLogin(); };
 
   return (
-    <main className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16">
+    <main
+      className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16"
+      style={{ backgroundColor: '#0B1A2E' }}
+    >
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
         <div className="mb-2">
           <button onClick={() => navigateTo('home')} className="inline-flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors text-sm">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-            Back to Home
+            <span className="text-gray-300">Back to Home</span>
           </button>
         </div>
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#16A34A]">
-            <span className="text-lg font-bold text-white">GS</span>
+          <div className="mx-auto mb-4 flex items-center justify-center">
+            <img
+              src="/logo-wide.png"
+              alt="Gig Solutions"
+              className="h-16 w-auto"
+              style={{ objectFit: 'contain' }}
+              onError={(e) => {
+                // Fallback to the smaller variant if the wide logo fails
+                (e.currentTarget as HTMLImageElement).src = '/logo-wide-40.png';
+              }}
+            />
           </div>
-          <h1 className="text-2xl font-bold tracking-widest text-[#16A34A]">GIG SOLUTIONS</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Sign in to your account</p>
+          <p className="mt-2 text-sm text-gray-300">Sign in to your account</p>
         </div>
 
-        <div className="rounded-2xl border bg-card p-6 sm:p-8 enterprise-shadow">
+        <div className="rounded-2xl border border-white/10 bg-white p-6 sm:p-8 enterprise-shadow">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label>Email</Label>
@@ -103,12 +105,12 @@ export default function LoginPage() {
           </form>
 
           <div className="my-6 text-center space-y-2">
-            <p className="text-sm text-muted-foreground">Don&apos;t have an account?</p>
+            <p className="text-sm text-gray-500">Don&apos;t have an account?</p>
             <div className="flex gap-3 justify-center">
               <button onClick={() => navigateTo('register-agent')} className="text-sm font-semibold text-[#16A34A] hover:text-[#22c55e] transition-colors">
                 Register as Agent
               </button>
-              <span className="text-muted-foreground">|</span>
+              <span className="text-gray-400">|</span>
               <button onClick={() => navigateTo('register-client')} className="text-sm font-semibold text-blue-500 hover:text-blue-400 transition-colors">
                 Register as Call Center
               </button>

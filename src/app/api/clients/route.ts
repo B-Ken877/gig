@@ -4,40 +4,60 @@ import { getAuth } from '@/lib/auth-middleware';
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = await getAuth(req);
+    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const isAdmin = auth.role === 'admin' || auth.role === 'payment_taker';
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     const userId = searchParams.get('userId');
 
+    // Helper: strip phone from a client record + nested user unless admin.
+    // The owner exception ONLY applies to the ?userId= path (loading your
+    // own profile for editing). In all other contexts (list, ?id=), only
+    // admin sees phone.
+    const stripPhone = (clientRecord: any, allowOwner: boolean) => {
+      const isOwner = allowOwner && !!clientRecord.userId && auth.userId === clientRecord.userId;
+      const canSeePhone = isAdmin || isOwner;
+      return {
+        ...clientRecord,
+        user: clientRecord.user
+          ? { ...clientRecord.user, phone: canSeePhone ? clientRecord.user.phone : undefined }
+          : null,
+        phone: canSeePhone ? (clientRecord.phone || clientRecord.user?.phone || null) : undefined,
+      };
+    };
+
     if (id) {
-      // Use findUnique + separate user lookup to be resilient to orphan rows
-      // (Clients whose User was hard-deleted bypassing Prisma's cascade).
       const client = await db.client.findUnique({ where: { id } });
       if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-      let user: { id: string; name: string; email: string; role: string; phone: string | null; avatar: string | null; accountStatus: string } | null = null;
+      let user: any = null;
       if (client.userId) {
         user = await db.user.findUnique({
           where: { id: client.userId },
           select: { id: true, name: true, email: true, role: true, phone: true, avatar: true, accountStatus: true },
         });
       }
-      return NextResponse.json({ client: { ...client, user, phone: client.phone || user?.phone || null } });
+      return NextResponse.json({ client: stripPhone({ ...client, user }, false) });
     }
 
     if (userId) {
-      // Find by userId — used by the profile form to load the current user's company
+      // Find by userId — used by the profile form to load the current user's company.
+      // Owner exception applies here (they need their phone for editing).
       const client = await db.client.findUnique({ where: { userId } });
       if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-      let user: { id: string; name: string; email: string; role: string; phone: string | null; avatar: string | null; accountStatus: string } | null = null;
+      let user: any = null;
       if (client.userId) {
         user = await db.user.findUnique({
           where: { id: client.userId },
           select: { id: true, name: true, email: true, role: true, phone: true, avatar: true, accountStatus: true },
         });
       }
-      return NextResponse.json({ client: { ...client, user, phone: client.phone || user?.phone || null } });
+      return NextResponse.json({ client: stripPhone({ ...client, user }, true) });
     }
 
-    // List all clients — fetch users in a separate query to be resilient to orphans.
+    // List all clients — strip phone for all non-admin callers (no owner
+    // exception in list view; you're browsing, not editing).
     const clients = await db.client.findMany({ orderBy: { createdAt: 'desc' } });
     const userIds = clients.map(c => c.userId).filter(Boolean) as string[];
     const users = userIds.length > 0
@@ -48,10 +68,7 @@ export async function GET(req: NextRequest) {
       : [];
     const userMap = Object.fromEntries(users.map(u => [u.id, u]));
     return NextResponse.json({
-      clients: clients.map(c => ({
-        ...c,
-        user: c.userId ? userMap[c.userId] || null : null,
-      })),
+      clients: clients.map(c => stripPhone({ ...c, user: c.userId ? userMap[c.userId] || null : null }, false)),
     });
   } catch (error) {
     console.error('GET /api/clients error:', error);

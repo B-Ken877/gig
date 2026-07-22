@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { VerifiedBadge, VerifiedBadgeStyles, topVerificationTier, type VerificationTier } from '@/components/ui/verified-badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, Star, Volume2, VolumeX } from 'lucide-react';
+import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, UsersRound, Star, GraduationCap, Brain, ShoppingBag, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { VerifiedBadge, VerifiedBadgeStyles, topVerificationTier, type VerificationTier } from '@/components/ui/verified-badge';
 
 interface NavItem { label: string; page: PageType; icon: React.ElementType; }
 
@@ -21,6 +21,10 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'Documents', page: 'agent-documents', icon: FileText },
     { label: 'Availability', page: 'agent-availability', icon: Calendar },
     { label: 'My Applications', page: 'agent-applications', icon: ClipboardList },
+    { label: 'Academy', page: 'academy', icon: GraduationCap },
+    { label: 'AI Training', page: 'ai-training', icon: Brain },
+    { label: 'Marketplace', page: 'marketplace', icon: ShoppingBag },
+    { label: 'Team Chat', page: 'group-chat', icon: UsersRound },
     { label: 'Reviews', page: 'reviews', icon: Star },
     { label: 'Customer Support', page: 'support', icon: Headphones },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
@@ -28,10 +32,14 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
   client: [
     { label: 'Dashboard', page: 'client-dashboard', icon: LayoutDashboard },
     { label: 'Company Profile', page: 'client-profile', icon: Building2 },
-    { label: 'Job Postings', page: 'client-jobs', icon: Globe },
-    { label: 'My Needs', page: 'client-needs', icon: Briefcase },
+    { label: 'Job Links', page: 'client-jobs', icon: Globe },
+    { label: 'My Jobs', page: 'client-needs', icon: Briefcase },
     { label: 'Agent Bank', page: 'client-agents', icon: Users },
     { label: 'Applications', page: 'client-applications', icon: ClipboardList },
+    { label: 'Academy', page: 'academy', icon: GraduationCap },
+    { label: 'AI Training', page: 'ai-training', icon: Brain },
+    { label: 'Marketplace', page: 'marketplace', icon: ShoppingBag },
+    { label: 'Team Chat', page: 'group-chat', icon: UsersRound },
     { label: 'Reviews', page: 'reviews', icon: Star },
     { label: 'Customer Support', page: 'support', icon: Headphones },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
@@ -43,9 +51,14 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
   ],
   admin: [
     { label: 'Dashboard', page: 'admin-dashboard', icon: LayoutDashboard },
-    { label: 'Job Postings', page: 'admin-job-posts', icon: ClipboardList },
+    { label: 'Payment Requests', page: 'payment-taker-dashboard', icon: DollarSign },
+    { label: 'Job Links', page: 'admin-job-posts', icon: ClipboardList },
     { label: 'Users', page: 'admin-users', icon: Users },
+    { label: 'Products', page: 'admin-products', icon: Package },
+    { label: 'Academy', page: 'academy', icon: GraduationCap },
+    { label: 'Team Chat', page: 'group-chat', icon: UsersRound },
     { label: 'Reviews', page: 'reviews', icon: Star },
+    { label: 'Support Tickets', page: 'tickets', icon: ClipboardList },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
 };
@@ -53,74 +66,28 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
 function getPageTitle(page: PageType): string {
   const map: Partial<Record<PageType, string>> = {
     home: 'Home', services: 'Services', 'for-clients': 'For Call Centers', careers: 'Careers',
-    about: 'About Us', contact: 'Contact', login: 'Login',
+    about: 'About Us', contact: 'Contact', academy: 'Academy', 'ai-training': 'AI Training', marketplace: 'Marketplace', 'admin-products': 'Products', login: 'Login',
     'agent-dashboard': 'Dashboard', 'agent-profile': 'My Profile', 'agent-documents': 'Documents', 'agent-availability': 'Availability', 'agent-applications': 'My Applications',
-    'client-dashboard': 'Dashboard', 'client-agents': 'Agent Bank', 'client-needs': 'My Staffing Needs', 'client-jobs': 'Job Postings', 'client-applications': 'Applications', 'client-profile': 'Company Profile',
-    'admin-dashboard': 'Admin Dashboard', 'admin-users': 'Users', 'admin-job-posts': 'Job Postings',
-    'payment-taker-dashboard': 'Payment Requests', 'messages': 'Messages', 'pending-payment': 'Complete Payment', 'support': 'Customer Support', 'tickets': 'Support Tickets', 'reviews': 'Reviews',
+    'client-dashboard': 'Dashboard', 'client-agents': 'Agent Bank', 'client-needs': 'My Jobs', 'client-jobs': 'Job Links', 'client-applications': 'Applications', 'client-profile': 'Company Profile',
+    'admin-dashboard': 'Admin Dashboard', 'admin-users': 'Users', 'admin-job-posts': 'Job Links',
+    'payment-taker-dashboard': 'Payment Requests', 'messages': 'Messages', 'group-chat': 'Team Chat', 'pending-payment': 'Complete Payment', 'support': 'Customer Support', 'tickets': 'Support Tickets', 'reviews': 'Reviews',
   };
   return map[page] || 'Dashboard';
 }
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const [displayName, setDisplayName] = useState<string | null>(null);
-  const { currentUser, currentPage, sidebarOpen, setSidebarOpen, navigateTo, logout, notifications, updateCurrentUser, notifSoundPref, setNotifSoundPref } = useAppStore();
+  const { currentUser, currentPage, sidebarOpen, setSidebarOpen, navigateTo, logout, notifications } = useAppStore();
   const role = (currentUser?.role || 'visitor') as string;
-  const navItems = (NAV_CONFIG[role] || []) as NavItem[];
+  // Treat payment_taker as admin (merged role — admin handles both jobs now)
+  const effectiveRole = role === 'payment_taker' ? 'admin' : role;
+  const navItems = (NAV_CONFIG[effectiveRole] || NAV_CONFIG[role] || []) as NavItem[];
   const pageTitle = getPageTitle(currentPage);
   const unreadCount = (notifications || []).filter((n) => !n.isRead).length;
   const notifPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dismissedRef = useRef<Set<string>>(new Set());
-  // Tracks IDs we've already seen during notification polling. Initialized to
-  // `null` so the FIRST poll seeds the set silently (we don't want to blast the
-  // chime the moment the user opens the app for notifications that arrived
-  // while they were away — that's a separate "unread banner" concern).
-  const seenNotifIdsRef = useRef<Set<string> | null>(null);
-  // Single reused Audio element — reusing avoids re-fetching the MP3 on every
-  // chime and lets the browser pre-buffer it.
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => { if (window.innerWidth < 1024) setSidebarOpen(false); }, [currentPage, setSidebarOpen]);
-
-  // Pre-load the notification chime once on mount so the first play is instant
-  // (no network round-trip after a push arrives).
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const a = new Audio('/sounds/notification.mp3');
-      a.preload = 'auto';
-      a.volume = 0.55;
-      audioRef.current = a;
-    } catch (_) { /* ignore */ }
-    return () => { audioRef.current = null; };
-  }, []);
-
-  // Play the notification chime — but only if the user hasn't muted it.
-  // Wrapped in useCallback so it can be a stable dependency for other effects.
-  const playNotifSound = useCallback(() => {
-    if (notifSoundPref !== 'on') return;
-    try {
-      const a = audioRef.current;
-      if (!a) return;
-      // Reset to start in case the previous play is still fading out.
-      a.currentTime = 0;
-      a.volume = 0.55;
-      const p = a.play();
-      if (p && typeof p.catch === 'function') p.catch(() => {}); // ignore autoplay rejection
-    } catch (_) { /* best-effort */ }
-  }, [notifSoundPref]);
-
-  // Listen for messages from the service worker. The SW fires this whenever a
-  // real web-push arrives so the page can play the chime (SW itself can't play
-  // <audio> — no DOM access).
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
-    const handler = (event: MessageEvent) => {
-      if (event?.data?.type === 'PLAY_NOTIF_SOUND') playNotifSound();
-    };
-    navigator.serviceWorker.addEventListener('message', handler);
-    return () => navigator.serviceWorker.removeEventListener('message', handler);
-  }, [playNotifSound]);
 
   // Browser push notification subscription
   useEffect(() => {
@@ -143,40 +110,54 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     })();
   }, [currentUser]);
 
+  // Listen for PLAY_NOTIF_SOUND messages from the service worker and play
+  // the in-app chime. The SW can't play <audio> directly (no DOM), so it
+  // posts a message to all open client windows. We respect the user's mute
+  // preference (stored in localStorage as 'notif-muted').
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    const handler = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'PLAY_NOTIF_SOUND') {
+        try {
+          const muted = localStorage.getItem('notif-muted') === '1';
+          if (muted) return;
+          const audio = new Audio('/sounds/notification.mp3');
+          audio.volume = 0.6;
+          audio.play().catch(() => { /* autoplay may be blocked until user interacts */ });
+        } catch (_) { /* best-effort */ }
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  }, []);
+
   // Fetch in-app notifications (immediate + poll every 15s)
   // Dismissed notifications are tracked in dismissedRef and filtered out on each poll.
-  // New notifications (IDs we haven't seen before across polls) trigger the chime.
-  // On the first poll after login, if there are unread notifications, the chime
-  // ALSO plays — so users who were away when a notification arrived still get
-  // alerted when they open the app.
+  // When a NEW notification appears (compared to the previous poll), play the chime.
+  const prevNotifIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!currentUser) return;
-    // Reset the seen-set whenever the user changes (login/logout switch).
-    seenNotifIdsRef.current = null;
     const fetchNotifs = () => {
       fetch('/api/notifications?userId=' + currentUser.id)
         .then(r => r.json())
         .then(data => {
           if (Array.isArray(data)) {
             const filtered = data.filter((n: any) => !dismissedRef.current.has(n.id));
-            // Detect brand-new IDs vs. previously-seen ones.
-            const seen = seenNotifIdsRef.current;
-            if (seen === null) {
-              // First poll after login. Seed the seen-set with current IDs
-              // AND play the chime if there are any unread notifications —
-              // this ensures users who were away when a notification arrived
-              // still get alerted when they open the app.
-              seenNotifIdsRef.current = new Set(filtered.map((n: any) => n.id));
-              if (filtered.length > 0) {
-                playNotifSound();
-              }
-            } else {
-              const newOnes = filtered.filter((n: any) => !seen.has(n.id));
-              if (newOnes.length > 0) {
-                newOnes.forEach((n: any) => seen.add(n.id));
-                playNotifSound();
-              }
+            // Detect newly-arrived notifications (IDs not in the previous set)
+            const newIds = filtered.filter((n: any) => !prevNotifIdsRef.current.has(n.id));
+            if (newIds.length > 0 && prevNotifIdsRef.current.size > 0) {
+              // Play chime for the newest one (respect mute preference)
+              try {
+                const muted = localStorage.getItem('notif-muted') === '1';
+                if (!muted) {
+                  const audio = new Audio('/sounds/notification.mp3');
+                  audio.volume = 0.6;
+                  audio.play().catch(() => { /* autoplay may be blocked */ });
+                }
+              } catch (_) { /* best-effort */ }
             }
+            // Update the prev-IDs set for the next poll
+            prevNotifIdsRef.current = new Set(filtered.map((n: any) => n.id));
             useAppStore.getState().setData('notifications', filtered);
           }
         })
@@ -185,10 +166,40 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     fetchNotifs();
     notifPollRef.current = setInterval(fetchNotifs, 15000);
     return () => { if (notifPollRef.current) clearInterval(notifPollRef.current); };
-  }, [currentUser, playNotifSound]);
+  }, [currentUser]);
+
+  // Map a notification type to the page the user should be taken to
+  // when they click on the notification.
+  const pageForNotification = (n: { type?: string | null }): PageType | null => {
+    switch (n.type) {
+      case 'payment_request':
+        // Agents/clients → payment chat; admin/payment_taker → dashboard
+        return effectiveRole === 'admin' ? 'payment-taker-dashboard' : 'pending-payment';
+      case 'message':
+        return 'messages';
+      case 'need':
+      case 'staffing_request':
+        return effectiveRole === 'admin' ? 'admin-job-posts' : 'client-needs';
+      case 'application':
+        return effectiveRole === 'admin' ? 'admin-job-posts' : 'client-applications';
+      case 'review':
+        return 'reviews';
+      case 'ticket':
+      case 'support':
+      case 'support_ticket':
+      case 'product_order':
+        return effectiveRole === 'admin' ? 'tickets' : 'support';
+      case 'verification':
+        return effectiveRole === 'admin' ? 'admin-users' : 'agent-profile';
+      default:
+        return null;
+    }
+  };
 
   const markSingleRead = useCallback(async (notifId: string) => {
     if (!currentUser) return;
+    // Look up the notification so we can navigate based on its type
+    const target = (notifications || []).find(n => n.id === notifId);
     // Track as dismissed so polling won't bring it back
     dismissedRef.current.add(notifId);
     // Mark as read on server
@@ -196,7 +207,12 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     // Remove from local store immediately
     const updated = (notifications || []).filter(n => n.id !== notifId);
     useAppStore.getState().setData('notifications', updated);
-  }, [currentUser, notifications]);
+    // Navigate to the related page based on notification type
+    if (target) {
+      const page = pageForNotification(target);
+      if (page) navigateTo(page);
+    }
+  }, [currentUser, notifications, navigateTo, effectiveRole]);
 
   const markAllRead = async () => {
     if (!currentUser || !notifications) return;
@@ -208,48 +224,37 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     useAppStore.getState().setData('notifications', notifications.map(n => ({ ...n, isRead: true })));
   };
 
-  // Fetch company name + avatar for call center users (and refresh avatar for everyone).
-  // This runs on every mount so a freshly uploaded picture shows up in the sidebar
-  // without requiring a full page reload.
+  // Fetch company name for call center users
   useEffect(() => {
-    if (!currentUser) return;
-    if (currentUser.role === 'client') {
+    if (currentUser?.role === 'client') {
       fetch('/api/users/company-name', { headers: { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role } })
         .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (d?.companyName) setDisplayName(d.companyName);
-          // Best-effort: also refresh avatar if returned
-          // (the /api/users/company-name endpoint currently only returns companyName,
-          //  so we leave avatar alone — it is refreshed via updateCurrentUser on upload)
-        })
+        .then(d => { if (d?.companyName) setDisplayName(d.companyName); })
         .catch(() => {});
-    } else {
-      // For non-clients, the personal name is the display name
-      setDisplayName(currentUser.name || null);
     }
-  }, [currentUser, updateCurrentUser]);
+  }, [currentUser]);
 
-  const effectiveName = displayName || currentUser?.name || 'User';
-  const initials = effectiveName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-  const avatarUrl = currentUser?.avatar || null;
+  const effectiveName = displayName || currentUser?.name || 'User'; const initials = effectiveName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 
-  // Parse the current user's verification tiers (from the store / login response)
-  const myTiers: VerificationTier[] = Array.isArray(currentUser?.verificationTiers)
-    ? (currentUser.verificationTiers as VerificationTier[])
+  // Verification tiers for the current user — drives the badge seal on the header avatar.
+  const myTiers: VerificationTier[] = Array.isArray((currentUser as any)?.verificationTiers)
+    ? (currentUser!.verificationTiers as VerificationTier[])
     : [];
   const myTopTier = topVerificationTier(myTiers);
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
+    <div className="min-h-screen flex bg-gray-50 max-w-[100vw]" style={{ overflowX: 'clip' }}>
       <VerifiedBadgeStyles />
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
       <aside className={cn('fixed lg:sticky top-0 left-0 z-50 h-screen w-[280px] text-white flex flex-col transition-transform duration-300', sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0')} style={{ backgroundColor: '#0B1A2E' }}>
         <div className="flex items-center justify-between px-6 py-5">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#16A34A] flex items-center justify-center font-bold text-white text-sm">GS</div>
-            <span className="text-base font-semibold" style={{ fontFamily: 'var(--font-playfair), Georgia, serif' }}>
-              <span className="text-white">Gig </span><span className="text-[#16A34A]">Solutions</span>
-            </span>
+            <img
+              src="/logo-wide-40.png"
+              alt="Gig Solutions"
+              className="h-9 w-auto"
+              style={{ objectFit: 'contain' }}
+            />
           </div>
           <Button variant="ghost" size="icon" className="lg:hidden text-white hover:bg-white/10 h-8 w-8" onClick={() => setSidebarOpen(false)}><X className="h-4 w-4" /></Button>
         </div>
@@ -272,16 +277,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </ScrollArea>
         <div className="px-3 pb-3">
           <Separator className="bg-white/10 mb-3" />
-          <button
-            onClick={() => setNotifSoundPref(notifSoundPref === 'on' ? 'off' : 'on')}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:bg-white/8 hover:text-white transition-colors w-full text-left mb-1"
-            title={notifSoundPref === 'on' ? 'Mute notification sounds' : 'Unmute notification sounds'}
-          >
-            {notifSoundPref === 'on'
-              ? <Volume2 className="h-4 w-4 shrink-0" />
-              : <VolumeX className="h-4 w-4 shrink-0" />}
-            <span>{notifSoundPref === 'on' ? 'Sound On' : 'Sound Muted'}</span>
-          </button>
           <button onClick={() => navigateTo('home')} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:bg-white/8 hover:text-white transition-colors w-full text-left">
             <ArrowLeft className="h-4 w-4 shrink-0" /><span>Back to Website</span>
           </button>
@@ -289,7 +284,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-30 bg-white border-b border-gray-200 h-16 flex items-center justify-between px-4 md:px-6">
+        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-gray-200 h-16 flex items-center justify-between px-4 md:px-6 shadow-sm">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" className="lg:hidden h-9 w-9" onClick={() => setSidebarOpen(true)}><Menu className="h-5 w-5" /></Button>
             <h1 className="text-lg font-semibold text-gray-900">{pageTitle}</h1>
@@ -323,15 +318,15 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             </DropdownMenu>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2 px-2 h-9 relative">
-                  <div className="relative">
+                <Button variant="ghost" className="gap-2 px-2 h-9">
+                  <div className="relative shrink-0">
                     <Avatar className="h-7 w-7">
-                      {avatarUrl && <AvatarImage src={avatarUrl} alt={effectiveName} />}
+                      {currentUser?.avatar && <AvatarImage src={currentUser.avatar} alt={effectiveName} />}
                       <AvatarFallback className="bg-[#16A34A] text-white text-xs font-semibold">{initials}</AvatarFallback>
                     </Avatar>
                     {myTopTier && (
                       <span className="absolute -bottom-1 -right-1">
-                        <VerifiedBadge tier={myTopTier} iconOnly size="xs" verifiedAt={currentUser?.verifiedAt} />
+                        <VerifiedBadge tier={myTopTier} iconOnly size="xs" verifiedAt={(currentUser as any)?.verifiedAt} />
                       </span>
                     )}
                   </div>
@@ -339,7 +334,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <div className="px-2 py-1.5"><p className="text-sm font-medium">{effectiveName}</p><p className="text-xs text-muted-foreground">{currentUser?.email}</p><p className="text-xs text-[#16A34A] capitalize">{currentUser?.role?.replace('_', ' ')}</p></div>
+                <div className="px-2 py-1.5"><p className="text-sm font-medium">{effectiveName}</p><p className="text-xs text-muted-foreground">{currentUser?.email}</p><p className="text-xs text-[#16A34A] capitalize">{effectiveRole.replace('_', ' ')}</p></div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigateTo('messages')}><MessageCircle className="mr-2 h-4 w-4" />Messages</DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -348,7 +343,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             </DropdownMenu>
           </div>
         </header>
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main
+          className={cn(
+            'flex-1 min-w-0 overflow-x-hidden',
+            (currentPage === 'academy' || currentPage === 'ai-training') ? '' : 'p-4 md:p-6',
+          )}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );
