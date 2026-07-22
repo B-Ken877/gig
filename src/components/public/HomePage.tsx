@@ -326,12 +326,6 @@ export default function HomePage() {
                   onClick={() => navigateTo('academy')}>
                   Explore the Academy <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
-                <a href="https://wa.me/50947579322?text=Hello%20Gig%20Solutions%20Academy!%20I%20want%20to%20buy%20the%20sample%20chapter%20for%20$5."
-                   target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" className="border-[#16A34A] text-[#16A34A] hover:bg-[#16A34A] hover:text-white">
-                    Get Sample Chapter — $5
-                  </Button>
-                </a>
               </div>
             </motion.div>
             {/* Right: book cover */}
@@ -367,3 +361,4 @@ export default function HomePage() {
     </main>
   );
 }
+

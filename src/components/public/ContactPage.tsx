@@ -14,7 +14,6 @@ const stagger = { visible: { transition: { staggerChildren: 0.12 } } };
 const SUBJECTS = ['General Inquiry', 'Agent Registration', 'Call Center Partnership', 'Payment Support', 'Technical Issue', 'Other'];
 const CONTACT_INFO = [
   { icon: Mail, label: 'Email', value: 'contact.gigsolutions@gmail.com', href: 'mailto:contact.gigsolutions@gmail.com' },
-  { icon: Phone, label: 'Phone', value: '+509 4425 6486 / +509 4757 9322', href: 'tel:+50944256486' },
   { icon: MapPin, label: 'Location', value: 'Petion-ville, Port-au-Prince, Haiti', href: null },
   { icon: Clock, label: 'Hours', value: 'Mon-Fri 8AM-6PM EST', href: null },
 ];
@@ -141,3 +140,4 @@ export default function ContactPage() {
     </main>
   );
 }
+

@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  Phone,
   Mail,
   MapPin,
   Facebook,
@@ -145,22 +144,6 @@ export default function PublicFooter() {
                 </span>
               </li>
               <li className="flex items-center gap-3">
-                <Phone className="size-4 shrink-0 text-[#16A34A]" />
-                <a
-                  href="tel:+50944256486"
-                  className="transition-enterprise text-sm text-white/60 hover:text-[#16A34A]"
-                >
-                  +509 4425 6486
-                </a>
-                <span className="text-white/30">/</span>
-                <a
-                  href="tel:+50947579322"
-                  className="transition-enterprise text-sm text-white/60 hover:text-[#16A34A]"
-                >
-                  +509 4757 9322
-                </a>
-              </li>
-              <li className="flex items-center gap-3">
                 <Mail className="size-4 shrink-0 text-[#16A34A]" />
                 <a
                   href="mailto:contact.gigsolutions@gmail.com"
@@ -190,3 +173,4 @@ export default function PublicFooter() {
     </footer>
   );
 }
+

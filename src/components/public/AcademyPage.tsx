@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
-  BookOpen,
   CheckCircle2,
   ChevronDown,
   ArrowRight,
@@ -26,12 +25,6 @@ import { useAppStore } from '@/lib/store';
  * — a book that teaches call center agents how to transition into
  * professional translation. CTA opens a WhatsApp chat.
  */
-
-const WHATSAPP_URL =
-  'https://wa.me/50947579322?text=' +
-  encodeURIComponent(
-    "Hello Gig Solutions Academy! I want to buy the sample chapter for $5.",
-  );
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -221,15 +214,6 @@ export default function AcademyPage() {
               transition={{ duration: 0.5 }}
               className="flex flex-wrap gap-4"
             >
-              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
-                <Button
-                  size="lg"
-                  className="bg-[#16A34A] hover:bg-[#0F7B35] text-white font-bold px-8 py-6 text-base shadow-lg shadow-[#16A34A]/40 rounded-xl transition-transform hover:-translate-y-0.5"
-                >
-                  <BookOpen className="h-5 w-5" />
-                  Get Sample — $5
-                </Button>
-              </a>
               <Button
                 size="lg"
                 variant="outline"
@@ -424,7 +408,6 @@ export default function AcademyPage() {
 
             <motion.div variants={fadeUp}>
               <a
-                href={WHATSAPP_URL}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -580,7 +563,6 @@ export default function AcademyPage() {
             </ul>
 
             <a
-              href={WHATSAPP_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="block"
@@ -705,7 +687,6 @@ export default function AcademyPage() {
           </motion.p>
           <motion.div variants={fadeUp}>
             <a
-              href={WHATSAPP_URL}
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -720,3 +701,4 @@ export default function AcademyPage() {
     </div>
   );
 }
+
