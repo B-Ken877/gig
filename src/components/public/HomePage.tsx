@@ -122,7 +122,11 @@ export default function HomePage() {
             <motion.div variants={fadeUp} transition={{ duration: 0.5 }} className="mt-8 flex flex-wrap gap-4">
               <Button size="lg" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
                 onClick={() => navigateTo('register-agent')}>
-                Get Started <ArrowRight className="ml-2 h-4 w-4" />
+                Register as Agent <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+              <Button size="lg" className="bg-[#0B1A2E] text-white hover:bg-[#0B1A2E]/90 border border-[#16A34A]/40"
+                onClick={() => navigateTo('register-client')}>
+                Register as Call Center <Building2 className="ml-2 h-4 w-4" />
               </Button>
               <Button size="lg" variant="outline" className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
                 onClick={() => navigateTo('services')}>
@@ -225,10 +229,16 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Button className="mt-8 bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
-                onClick={() => navigateTo('register-agent')}>
-                Register as Agent <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Button className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
+                  onClick={() => navigateTo('register-agent')}>
+                  Register as Agent <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+                <Button className="bg-[#0B1A2E] text-white hover:bg-[#0B1A2E]/90 border border-[#16A34A]/40"
+                  onClick={() => navigateTo('register-client')}>
+                  Register as Call Center <Building2 className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
             </motion.div>
             <motion.div initial={{ opacity: 0, x: 30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
               className="rounded-2xl overflow-hidden shadow-2xl">
@@ -349,7 +359,11 @@ export default function HomePage() {
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Button size="lg" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
               onClick={() => navigateTo('register-agent')}>
-              Create Your Account <ArrowRight className="ml-2 h-4 w-4" />
+              Register as Agent <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+            <Button size="lg" className="bg-[#0B1A2E] text-white hover:bg-[#0B1A2E]/90 border border-[#16A34A]/40"
+              onClick={() => navigateTo('register-client')}>
+              Register as Call Center <Building2 className="ml-2 h-4 w-4" />
             </Button>
             <Button size="lg" variant="outline" className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
               onClick={() => navigateTo('contact')}>
