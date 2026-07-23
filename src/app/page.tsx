@@ -36,7 +36,6 @@ import PendingPaymentPage from '@/components/portal/PendingPaymentPage';
 import MessagesPage from '@/components/portal/MessagesPage';
 import GroupChatPage from '@/components/portal/GroupChatPage';
 import ReviewsPage from '@/components/portal/ReviewsPage';
-import GigAITrainingPage from '@/components/portal/GigAITrainingPage';
 import MarketplacePage from '@/components/portal/MarketplacePage';
 import AdminProducts from '@/components/portal/AdminProducts';
 import { Toaster } from '@/components/ui/sonner';
@@ -49,7 +48,7 @@ const PORTAL_PAGES = new Set<PageType>([
   'agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications',
   'client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile',
   'admin-dashboard','admin-users','admin-job-posts',
-  'payment-taker-dashboard','messages','group-chat','support','tickets','reviews','ai-training','marketplace','admin-products',
+  'payment-taker-dashboard','messages','group-chat','support','tickets','reviews','marketplace','admin-products',
 ]);
 
 function PublicRouter() {
@@ -197,7 +196,6 @@ export default function Home() {
             {currentPage === 'support' && <SupportPage />}
             {currentPage === 'tickets' && <TicketsPage />}
             {currentPage === 'academy' && <AcademyPage />}
-            {currentPage === 'ai-training' && <GigAITrainingPage />}
             {currentPage === 'marketplace' && <MarketplacePage />}
             {currentPage === 'admin-products' && <AdminProducts />}
                                   </PortalLayout>

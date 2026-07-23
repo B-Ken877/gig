@@ -41,8 +41,8 @@ function effectiveRole(role: string | undefined): UserRole {
 }
 
 const ROLE_PAGE_MAP: Partial<Record<UserRole, ReadonlySet<PageType>>> = {
-  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications','academy','ai-training','marketplace','messages','group-chat','support','pending-payment','reviews']),
-  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile','academy','ai-training','marketplace','messages','group-chat','support','pending-payment','reviews']),
+  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications','academy','marketplace','messages','group-chat','support','pending-payment','reviews']),
+  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile','academy','marketplace','messages','group-chat','support','pending-payment','reviews']),
   // Admin = merged admin + payment_taker. One session, full access.
   admin: new Set([
     'admin-dashboard','admin-users','admin-job-posts','admin-products',

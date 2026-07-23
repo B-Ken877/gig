@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, UsersRound, Star, GraduationCap, Brain, ShoppingBag, Package } from 'lucide-react';
+import { LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X, Users, Briefcase, DollarSign, MessageCircle, ClipboardList, Globe, Check, Building2, Headphones, UsersRound, Star, GraduationCap, ShoppingBag, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VerifiedBadge, VerifiedBadgeStyles, topVerificationTier, type VerificationTier } from '@/components/ui/verified-badge';
 
@@ -22,7 +22,6 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'Availability', page: 'agent-availability', icon: Calendar },
     { label: 'My Applications', page: 'agent-applications', icon: ClipboardList },
     { label: 'Academy', page: 'academy', icon: GraduationCap },
-    { label: 'AI Training', page: 'ai-training', icon: Brain },
     { label: 'Marketplace', page: 'marketplace', icon: ShoppingBag },
     { label: 'Team Chat', page: 'group-chat', icon: UsersRound },
     { label: 'Reviews', page: 'reviews', icon: Star },
@@ -37,7 +36,6 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'Agent Bank', page: 'client-agents', icon: Users },
     { label: 'Applications', page: 'client-applications', icon: ClipboardList },
     { label: 'Academy', page: 'academy', icon: GraduationCap },
-    { label: 'AI Training', page: 'ai-training', icon: Brain },
     { label: 'Marketplace', page: 'marketplace', icon: ShoppingBag },
     { label: 'Team Chat', page: 'group-chat', icon: UsersRound },
     { label: 'Reviews', page: 'reviews', icon: Star },
@@ -66,7 +64,6 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
 function getPageTitle(page: PageType): string {
   const map: Partial<Record<PageType, string>> = {
     home: 'Home', services: 'Services', 'for-clients': 'For Call Centers', careers: 'Careers',
-    about: 'About Us', contact: 'Contact', academy: 'Academy', 'ai-training': 'AI Training', marketplace: 'Marketplace', 'admin-products': 'Products', login: 'Login',
     'agent-dashboard': 'Dashboard', 'agent-profile': 'My Profile', 'agent-documents': 'Documents', 'agent-availability': 'Availability', 'agent-applications': 'My Applications',
     'client-dashboard': 'Dashboard', 'client-agents': 'Agent Bank', 'client-needs': 'My Jobs', 'client-jobs': 'Job Links', 'client-applications': 'Applications', 'client-profile': 'Company Profile',
     'admin-dashboard': 'Admin Dashboard', 'admin-users': 'Users', 'admin-job-posts': 'Job Links',
@@ -346,7 +343,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         <main
           className={cn(
             'flex-1 min-w-0 overflow-x-hidden',
-            (currentPage === 'academy' || currentPage === 'ai-training') ? '' : 'p-4 md:p-6',
           )}
         >
           {children}

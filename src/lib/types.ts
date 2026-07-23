@@ -13,7 +13,7 @@ export type PageType =
   | 'support'
   | 'tickets'
   | 'reviews'
-  | 'ai-training'
+ 
   | 'marketplace'
   | 'admin-products'
 
