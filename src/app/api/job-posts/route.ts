@@ -5,35 +5,50 @@ import { createNotificationBulk } from '@/lib/notifications';
 
 // GET /api/job-posts
 // Public — anyone (including logged-out visitors on the career page) can list
-// active jobs. Provider info is NEVER returned to the client.
+// active jobs. Provider info and commission are NEVER returned to the public.
+// Admins can pass ?all=1 to include inactive jobs, and get commission/provider.
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const includeInactive = searchParams.get('all') === '1';
 
+    // If admin asks for all, we also expose commission + providerId (admin-only fields)
+    let isAdmin = false;
+    try {
+      const auth = await getAuth(req);
+      if (!('error' in auth) && auth.role === 'admin') isAdmin = true;
+    } catch { /* not authenticated — public request */ }
+
     const posts = await db.jobPost.findMany({
-      where: includeInactive ? {} : { isActive: true },
+      where: includeInactive && isAdmin ? {} : { isActive: true },
       orderBy: { createdAt: 'desc' },
       include: { _count: { select: { applications: true, placements: true } } },
     });
 
-    const cleaned = posts.map(p => ({
-      id: p.id,
-      jobTitle: p.jobTitle,
-      description: p.description,
-      skills: JSON.parse(p.skills || '[]'),
-      requirements: JSON.parse(p.requirements || '[]'),
-      hourlyRate: p.hourlyRate,
-      payFrequency: p.payFrequency,
-      category: p.category,
-      shift: p.shift,
-      location: p.location,
-      commission: p.commission,
-      isActive: p.isActive,
-      createdAt: p.createdAt.toISOString(),
-      updatedAt: p.updatedAt.toISOString(),
-      _count: p._count,
-    }));
+    const cleaned = posts.map(p => {
+      const base: Record<string, unknown> = {
+        id: p.id,
+        jobTitle: p.jobTitle,
+        description: p.description,
+        skills: JSON.parse(p.skills || '[]'),
+        requirements: JSON.parse(p.requirements || '[]'),
+        hourlyRate: p.hourlyRate,
+        payFrequency: p.payFrequency,
+        category: p.category,
+        shift: p.shift,
+        location: p.location,
+        isActive: p.isActive,
+        createdAt: p.createdAt.toISOString(),
+        updatedAt: p.updatedAt.toISOString(),
+        _count: p._count,
+      };
+      // Admin-only fields — NEVER exposed to the public
+      if (isAdmin) {
+        base.commission = p.commission;
+        base.providerId = p.providerId;
+      }
+      return base;
+    });
 
     return NextResponse.json({ jobPosts: cleaned });
   } catch (error) {

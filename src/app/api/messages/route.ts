@@ -7,6 +7,8 @@ function normalizePair(idA: string, idB: string): [string, string] {
   return idA < idB ? [idA, idB] : [idB, idA];
 }
 
+// GET /api/messages?userId=... → list conversations for the user
+// GET /api/messages?conversationId=... → list messages in a conversation
 export async function GET(req: NextRequest) {
   try {
     const auth = await getAuth(req);
@@ -28,99 +30,51 @@ export async function GET(req: NextRequest) {
         where: { conversationId }, orderBy: { createdAt: 'asc' },
       });
 
-      const unread = messages.filter(m => !m.isRead && m.senderId !== userId);
-      if (unread.length > 0) {
-        await db.message.updateMany({ where: { id: { in: unread.map(m => m.id) } }, data: { isRead: true } });
-        const field = conv.user1Id === userId ? 'unreadUser1' : 'unreadUser2';
-        await db.conversation.update({ where: { id: conversationId }, data: { [field]: 0 } });
-      }
-
-      return NextResponse.json({ messages: messages.map(m => ({ ...m, createdAt: m.createdAt.toISOString(), updatedAt: m.updatedAt.toISOString() })) });
+      return NextResponse.json({
+        messages: messages.map(m => ({
+          id: m.id, conversationId: m.conversationId, senderId: m.senderId,
+          senderRole: m.senderRole, content: m.content, isRead: m.isRead,
+          createdAt: m.createdAt.toISOString(),
+        })),
+      });
     }
 
-    if (userIdParam) {
-      // ─── Orphan-cleanup pass ───────────────────────────────────────────
-      // Earlier versions of the schema allowed Conversation rows to survive
-      // even when one of the participant users was hard-deleted. Prisma's
-      // include then crashes with "Field user2 is required to return data,
-      // got null instead" because the relation is non-optional. We proactively
-      // delete any conversation whose user1 or user2 no longer exists before
-      // running the include query. This is best-effort and silent.
-      try {
-        const allConvs = await db.conversation.findMany({
-          where: { OR: [{ user1Id: userId }, { user2Id: userId }] },
-          select: { id: true, user1Id: true, user2Id: true },
-        });
-        const participantIds = [...new Set(allConvs.flatMap(c => [c.user1Id, c.user2Id]))];
-        if (participantIds.length > 0) {
-          const existing = await db.user.findMany({
-            where: { id: { in: participantIds } },
-            select: { id: true },
-          });
-          const existingSet = new Set(existing.map(u => u.id));
-          const orphanIds = allConvs
-            .filter(c => !existingSet.has(c.user1Id) || !existingSet.has(c.user2Id))
-            .map(c => c.id);
-          if (orphanIds.length > 0) {
-            await db.conversation.deleteMany({ where: { id: { in: orphanIds } } });
-            console.log('[messages GET] cleaned up ' + orphanIds.length + ' orphaned conversation(s)');
-          }
-        }
-      } catch (cleanupErr) {
-        // Don't let the cleanup pass mask the real query — log and continue.
-        console.error('[messages GET] orphan cleanup failed:', cleanupErr);
-      }
+    // List all conversations for the user
+    const targetUserId = userIdParam || userId;
+    const conversations = await db.conversation.findMany({
+      where: { OR: [{ user1Id: targetUserId }, { user2Id: targetUserId }] },
+      orderBy: { lastMessageAt: 'desc' },
+    });
 
-      const conversations = await db.conversation.findMany({
-        where: { OR: [{ user1Id: userId }, { user2Id: userId }] },
-        include: {
-          user1: { select: { id: true, name: true, role: true, avatar: true, verificationTiers: true, verifiedAt: true } },
-          user2: { select: { id: true, name: true, role: true, avatar: true, verificationTiers: true, verifiedAt: true } },
-          messages: { orderBy: { createdAt: 'desc' }, take: 1 },
-        },
-        orderBy: { lastMessageAt: 'desc' },
-      });
+    // Fetch the other user for each conversation
+    const otherUserIds = conversations.map(c => c.user1Id === targetUserId ? c.user2Id : c.user1Id);
+    const otherUsers = await db.user.findMany({
+      where: { id: { in: otherUserIds } },
+      select: { id: true, name: true, email: true, role: true, avatar: true },
+    });
+    const userMap = new Map(otherUsers.map(u => [u.id, u]));
 
-      // Get company names for all client-role users in one query
-      const clientUserIds = [...new Set(conversations.flatMap(c => [c.user1, c.user2].filter(u => u?.role === 'client').map(u => u.id)))];
-      const clients = clientUserIds.length > 0 ? await db.client.findMany({ where: { userId: { in: clientUserIds } }, select: { userId: true, companyName: true } }) : [];
-      const companyNameMap = Object.fromEntries(clients.map(cl => [cl.userId, cl.companyName]));
+    const result = conversations.map(c => {
+      const otherId = c.user1Id === targetUserId ? c.user2Id : c.user1Id;
+      const other = userMap.get(otherId);
+      const unreadCount = c.user1Id === targetUserId ? c.unreadUser1 : c.unreadUser2;
+      return {
+        id: c.id,
+        otherUser: other ? { id: other.id, name: other.name, email: other.email, role: other.role, avatar: other.avatar } : null,
+        lastMessage: c.lastMessage,
+        lastMessageAt: c.lastMessageAt?.toISOString() || null,
+        unreadCount,
+      };
+    });
 
-      const result = conversations.map(c => {
-        const isUser1 = c.user1Id === userId;
-        const otherUser = isUser1 ? c.user2 : c.user1;
-        const displayName = otherUser?.role === 'client' && companyNameMap[otherUser.id] ? companyNameMap[otherUser.id] : (otherUser?.name || 'Unknown');
-        // Parse verificationTiers JSON string -> string[] for the client
-        let otherTiers: string[] = [];
-        try {
-          const parsed = JSON.parse((otherUser as any)?.verificationTiers || '[]');
-          if (Array.isArray(parsed)) otherTiers = parsed.filter((t: unknown) => typeof t === 'string');
-        } catch { /* ignore */ }
-        return {
-          id: c.id, user1Id: c.user1Id, user2Id: c.user2Id,
-          lastMessage: c.lastMessage, lastMessageAt: c.lastMessageAt?.toISOString() || null,
-          unreadCount: isUser1 ? c.unreadUser1 : c.unreadUser2,
-          otherUser: otherUser ? {
-            id: otherUser.id,
-            name: displayName,
-            role: otherUser.role,
-            avatar: otherUser.avatar,
-            verificationTiers: otherTiers,
-            verifiedAt: (otherUser as any)?.verifiedAt ? (otherUser as any).verifiedAt.toISOString() : null,
-          } : { id: null, name: 'Unknown', role: 'visitor', avatar: null, verificationTiers: [], verifiedAt: null },
-          latestMessage: c.messages[0] ? { id: c.messages[0].id, content: c.messages[0].content, senderId: c.messages[0].senderId, createdAt: c.messages[0].createdAt.toISOString() } : null,
-        };
-      });
-      return NextResponse.json({ conversations: result });
-    }
-
-    return NextResponse.json({ error: 'Provide conversationId or userId' }, { status: 400 });
+    return NextResponse.json({ conversations: result });
   } catch (error) {
     console.error('GET /api/messages error:', error);
-    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }
 
+// POST /api/messages — send a message to another user
 export async function POST(req: NextRequest) {
   try {
     const auth = await getAuth(req);
@@ -128,136 +82,103 @@ export async function POST(req: NextRequest) {
     const { userId, role } = auth;
 
     const body = await req.json();
-    const { conversationId, recipientUserId, content } = body;
-    if (!content || !content.trim()) return NextResponse.json({ error: 'Message content is required' }, { status: 400 });
-
-    let convId = conversationId;
-    // resetConversation: when true, FIND any existing conversation between
-    // sender and recipient, DELETE all its messages, and reset its unread
-    // counters + lastMessage. This makes the chat appear "new" each time
-    // (used by the payment chat so prior payment attempts don't show up
-    // as history in the new chat).
-    //
-    // We can't create a second conversation row because the Conversation
-    // table has a UNIQUE(user1Id, user2Id) constraint. So instead we
-    // reset the existing one in place — same row, fresh content.
-    const resetConversation = body.resetConversation === true;
-    if (!convId) {
-      if (!recipientUserId) return NextResponse.json({ error: 'recipientUserId required' }, { status: 400 });
-
-      // ─── Block agent → client direct messaging ────────────────────────
-      // Agents cannot start a NEW conversation with a call center. They can
-      // only message other agents (and admin). To contact a call center,
-      // the agent must apply to a job posting, which creates the
-      // conversation implicitly with the application message.
-      // (Existing conversations created via application are still allowed
-      // to receive replies — those go through `conversationId`, not
-      // `recipientUserId`, so they skip this check.)
-      if (role === 'agent') {
-        const recipient = await db.user.findUnique({
-          where: { id: recipientUserId },
-          select: { role: true },
-        });
-        if (recipient && recipient.role === 'client') {
-          return NextResponse.json(
-            { error: 'You can only message other agents. To contact a call center, apply to one of their job postings.' },
-            { status: 403 },
-          );
-        }
-      }
-
-      const [u1, u2] = normalizePair(userId, recipientUserId);
-      const existing = await db.conversation.findUnique({ where: { user1Id_user2Id: { user1Id: u1, user2Id: u2 } } });
-      if (existing) {
-        convId = existing.id;
-        // If resetConversation was requested, wipe all messages in this
-        // conversation so the chat starts fresh.
-        if (resetConversation) {
-          await db.message.deleteMany({ where: { conversationId: convId } });
-          await db.conversation.update({
-            where: { id: convId },
-            data: { lastMessage: null, lastMessageAt: new Date(0), unreadUser1: 0, unreadUser2: 0 },
-          });
-        }
-      } else {
-        const conv = await db.conversation.create({ data: { user1Id: u1, user2Id: u2 } });
-        convId = conv.id;
-      }
+    const { recipientId, content } = body;
+    if (!recipientId || !content) {
+      return NextResponse.json({ error: 'recipientId and content are required' }, { status: 400 });
     }
 
+    const [user1Id, user2Id] = normalizePair(userId, recipientId);
+
+    // Find or create the conversation
+    let conversation = await db.conversation.findUnique({
+      where: { user1Id_user2Id: { user1Id, user2Id } },
+    });
+
+    if (!conversation) {
+      conversation = await db.conversation.create({ data: { user1Id, user2Id } });
+    }
+
+    // Create the message
     const message = await db.message.create({
-      data: { conversationId: convId, senderId: userId, senderRole: role, content: content.trim() },
+      data: {
+        conversationId: conversation.id,
+        senderId: userId,
+        senderRole: role,
+        content,
+        isRead: false,
+      },
     });
 
+    // Update conversation stats
+    const isSenderUser1 = conversation.user1Id === userId;
     await db.conversation.update({
-      where: { id: convId },
-      data: { lastMessage: content.trim(), lastMessageAt: new Date() },
+      where: { id: conversation.id },
+      data: {
+        lastMessage: content,
+        lastMessageAt: new Date(),
+        unreadUser1: isSenderUser1 ? conversation.unreadUser1 : conversation.unreadUser1 + 1,
+        unreadUser2: isSenderUser1 ? conversation.unreadUser2 + 1 : conversation.unreadUser2,
+      },
     });
 
-    // Notify recipient (in-app + push)
+    // Notify the recipient
     try {
-      const conv = await db.conversation.findUnique({ where: { id: convId } });
-      if (conv) {
-        const recipientId = userId === conv.user1Id ? conv.user2Id : conv.user1Id;
-        // Increment unread count for recipient
-        const field = conv.user1Id === recipientId ? 'unreadUser1' : 'unreadUser2';
-        await db.conversation.update({
-          where: { id: convId },
-          data: { [field]: { increment: 1 } },
-        });
-
-        const sender = await db.user.findUnique({ where: { id: userId }, select: { name: true, role: true } });
-        let senderName = sender?.name || 'Someone';
-        if (sender?.role === 'client') {
-          const senderClient = await db.client.findUnique({ where: { userId }, select: { companyName: true } });
-          if (senderClient?.companyName) senderName = senderClient.companyName;
-        }
-        const preview = content.trim().substring(0, 100) + (content.trim().length > 100 ? '...' : '');
-
-        // ─── Payment-chat detection ─────────────────────────────────────
-        // If the recipient is an admin AND the sender has a pending
-        // PaymentRequest, classify this notification as `payment_request`
-        // (not `message`). This makes the notification click navigate to
-        // the Payment Requests dashboard instead of the Messages tab.
-        let notifType = 'message';
-        let notifTitle = 'New Message from ' + senderName;
-        let notifPushUrl = 'https://167.86.124.101:4001/#messages';
-        let notifPushBody = senderName + ': ' + preview;
-        try {
-          const recipient = await db.user.findUnique({ where: { id: recipientId }, select: { role: true } });
-          if (recipient && (recipient.role === 'admin' || recipient.role === 'payment_taker')) {
-            const pendingPR = await db.paymentRequest.findFirst({
-              where: { userId, status: 'pending' },
-              orderBy: { createdAt: 'desc' },
-            });
-            if (pendingPR) {
-              notifType = 'payment_request';
-              notifTitle = 'Payment chat: ' + senderName;
-              notifPushUrl = 'https://167.86.124.101:4001/#payment-taker-dashboard';
-              notifPushBody = senderName + ': ' + preview;
-            }
-          }
-        } catch (detectErr) {
-          // Best-effort — fall back to default `message` type.
-        }
-
-        await createNotification({
-          userId: recipientId,
-          title: notifTitle,
-          message: preview,
-          type: notifType,
-          pushBody: notifPushBody,
-          pushUrl: notifPushUrl,
-        });
-      }
-    } catch (notifErr) {
-      console.error('[messages POST] notification failed:', notifErr);
+      await createNotification(recipientId, {
+        title: 'New Message',
+        message: 'You have a new message',
+        type: 'message',
+      });
+    } catch (e) {
+      console.error('[messages POST] notification failed:', e);
     }
 
-    return NextResponse.json({ message: { ...message, createdAt: message.createdAt.toISOString() }, conversationId: convId }, { status: 201 });
+    return NextResponse.json({
+      message: {
+        id: message.id,
+        conversationId: message.conversationId,
+        senderId: message.senderId,
+        senderRole: message.senderRole,
+        content: message.content,
+        createdAt: message.createdAt.toISOString(),
+      },
+    }, { status: 201 });
   } catch (error) {
     console.error('POST /api/messages error:', error);
-    return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }
 
+// PATCH /api/messages — mark a conversation as read
+export async function PATCH(req: NextRequest) {
+  try {
+    const auth = await getAuth(req);
+    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { userId } = auth;
+
+    const body = await req.json();
+    const { conversationId } = body;
+    if (!conversationId) return NextResponse.json({ error: 'conversationId required' }, { status: 400 });
+
+    const conv = await db.conversation.findUnique({ where: { id: conversationId } });
+    if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (conv.user1Id !== userId && conv.user2Id !== userId) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    if (conv.user1Id === userId) {
+      await db.conversation.update({ where: { id: conversationId }, data: { unreadUser1: 0 } });
+    } else {
+      await db.conversation.update({ where: { id: conversationId }, data: { unreadUser2: 0 } });
+    }
+
+    await db.message.updateMany({
+      where: { conversationId, senderId: { not: userId }, isRead: false },
+      data: { isRead: true },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('PATCH /api/messages error:', error);
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
+  }
+}

@@ -15,7 +15,6 @@ const QUICK_LINKS: { label: string; page: PageType }[] = [
   { label: 'Home', page: 'home' },
   { label: 'About Us', page: 'about' },
   { label: 'Services', page: 'services' },
-  { label: 'For Clients', page: 'for-clients' },
   { label: 'Careers', page: 'careers' },
   { label: 'Contact', page: 'contact' },
 ];
@@ -64,9 +63,9 @@ export default function PublicFooter() {
               </div>
             </div>
             <p className="mb-6 max-w-xs text-sm leading-relaxed text-white/60">
-              The premier staffing partner for call centers and companies
-              seeking qualified remote professionals across the Caribbean and
-              beyond.
+              The premier platform connecting skilled remote agents with
+              job opportunities across the Caribbean and beyond. Browse
+              jobs, pass a quick assessment, and start working from home.
             </p>
             <div className="flex gap-3">
               {SOCIAL_LINKS.map(({ icon: Icon, href, label }) => (
@@ -173,4 +172,3 @@ export default function PublicFooter() {
     </footer>
   );
 }
-
