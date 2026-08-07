@@ -1,84 +1,27 @@
-// Types aligned with Prisma schema for Gig Solutions
+// Types aligned with the new Gig Solutions philosophy (admin-posted jobs,
+// per-job assessments, providers hidden from public).
 
 export type PageType =
-  | 'home' | 'services' | 'for-clients' | 'careers' | 'about' | 'contact' | 'academy'
-  | 'login' | 'register' | 'register-agent' | 'register-client'
+  // Public
+  | 'home' | 'services' | 'careers' | 'about' | 'contact' | 'academy'
+  | 'login' | 'register-agent'
+  // Agent portal
   | 'agent-dashboard' | 'agent-profile' | 'agent-documents' | 'agent-availability' | 'agent-applications'
-  | 'client-dashboard' | 'client-agents' | 'client-needs' | 'client-jobs' | 'client-applications' | 'client-profile'
-  | 'admin-dashboard' | 'admin-users' | 'admin-job-posts'
-  | 'payment-taker-dashboard'
-  | 'messages'
-  | 'group-chat'
-  | 'pending-payment'
-  | 'support'
-  | 'tickets'
-  | 'reviews'
- 
-  | 'marketplace'
-  | 'admin-products'
+  | 'agent-my-work'
+  // Admin portal (admin = merged admin + payment_taker)
+  | 'admin-dashboard' | 'admin-users' | 'admin-job-posts' | 'admin-providers'
+  | 'admin-placements' | 'admin-salary-dates'
+  | 'messages' | 'support' | 'tickets' | 'pending-payment';
 
-export type UserRole = 'visitor' | 'agent' | 'client' | 'payment_taker' | 'admin';
+export type UserRole = 'visitor' | 'agent' | 'admin';
 
 export type AgentStatus = 'Available' | 'Inactive';
 export type AccountStatus = 'active' | 'pending_approval' | 'rejected' | 'suspended';
-export type PaymentRequestStatus = 'pending' | 'approved' | 'rejected';
 
 export interface User {
   id: string; email: string; name: string; role: UserRole;
   phone?: string; avatar?: string; isActive: boolean;
   accountStatus: AccountStatus;
-  // Verification + Gig Score (premium badges). Populated by /api/auth/login
-  // and /api/users — the UI renders badges immediately after login.
-  verificationTiers?: string[];
-  verifiedAt?: string | null;
-  gigScore?: number;
-  // ─── Subscription / Payment gating ────────────────────────────────────
-  // `paid=true` + `paidUntil>now` is required for an agent to apply to a
-  // job, and for a call center to access the "Job Links" tab. The admin
-  // toggles this after approving a payment in the payment chat.
-  paid?: boolean;
-  paidUntil?: string | null;
-  paymentTier?: string | null;
-}
-
-// A user that can be reviewed (agent or call center). Returned by
-// /api/reviews?revieweeId=... and /api/reviews/search.
-export interface ReviewableUser {
-  id: string;
-  name: string;
-  role: 'agent' | 'client';
-  avatar?: string | null;
-  email?: string;
-  accountStatus?: string;
-  companyName?: string | null;
-  industry?: string | null;
-  country?: string | null;
-  skills?: string[];
-  verificationTiers?: string[];
-  verifiedAt?: string | null;
-  // Aggregate review stats (returned by search, not by the detail endpoint)
-  avgRating?: number | null;
-  reviewCount?: number;
-}
-
-export interface Review {
-  id: string;
-  reviewerId: string;
-  revieweeId: string;
-  rating: number;
-  title?: string | null;
-  comment: string;
-  createdAt: string;
-  updatedAt: string;
-  reviewer?: {
-    id: string;
-    name: string;
-    role: string;
-    avatar?: string | null;
-    companyName?: string | null;
-    verificationTiers?: string[];
-    verifiedAt?: string | null;
-  } | null;
 }
 
 export interface Agent {
@@ -95,33 +38,87 @@ export interface Agent {
   availabilitySlots?: AvailabilitySlot[];
 }
 
-export interface Client {
-  id: string; userId: string; companyName: string;
-  industry?: string; contactPerson?: string; phone?: string;
-  billingAddress?: string; billingEmail?: string; taxId?: string;
-  companyLink?: string;
+// Internal-only. Never exposed to the public site.
+export interface Provider {
+  id: string; name: string; contactPerson?: string;
+  phone?: string; email?: string; notes?: string;
   createdAt: string; updatedAt: string;
-  user?: User;
+  _count?: { jobPosts: number };
 }
 
 export interface JobPost {
-  id: string; clientId: string; companyName: string;
-  companyLink?: string; jobTitle: string; description: string;
-  isActive: boolean; createdAt: string; updatedAt: string;
+  id: string;
+  jobTitle: string;
+  description: string;
+  skills: string[];
+  requirements: string[];
+  hourlyRate: number;
+  payFrequency: string;
+  category?: string;
+  shift?: string;
+  location?: string;
+  providerId?: string;
+  commission: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  provider?: Provider | null;
+  _count?: { applications: number; placements: number };
 }
 
-export interface CallCenterNeed {
-  id: string; clientId: string; title: string;
-  description: string; requirements: string[];
-  isActive: boolean; createdAt: string; updatedAt: string;
+export interface JobApplication {
+  id: string;
+  agentId: string;
+  jobPostId: string;
+  status: 'applied' | 'reviewed' | 'hired' | 'rejected';
+  coverMessage?: string;
+  assessmentScore?: number;
+  assessmentPassed: boolean;
+  createdAt: string;
+  updatedAt: string;
+  jobPost?: JobPost;
+  agent?: Agent;
 }
 
-export interface PaymentRequest {
-  id: string; userId: string; role: string;
-  feeType: string; amount: number; currency: string;
-  status: PaymentRequestStatus; handledBy?: string;
-  createdAt: string; updatedAt: string;
-  user?: User; handledByUser?: User;
+export interface Placement {
+  id: string;
+  agentId: string;
+  jobPostId: string;
+  position: string;
+  startDate?: string;
+  endDate?: string;
+  salary?: number;
+  nextSalaryDate?: string;
+  status: 'active' | 'completed' | 'terminated';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  jobPost?: JobPost;
+  agent?: Agent;
+}
+
+export interface SalaryDate {
+  id: string;
+  payDate: string;
+  frequency: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Assessment {
+  id: string;
+  agentId: string;
+  jobPostId?: string;
+  section: string;
+  totalQuestions: number;
+  correctAnswers: number;
+  score: number;
+  passed: boolean;
+  answers: any[];
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Document {
@@ -139,7 +136,7 @@ export interface Notification {
 }
 
 export interface InternalNote {
-  id: string; agentId?: string; clientId?: string;
+  id: string; agentId?: string;
   authorId: string; type: string;
   content: string; createdAt: string; updatedAt: string;
 }

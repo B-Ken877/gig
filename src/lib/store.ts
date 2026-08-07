@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
-  PageType, User, Agent, Client, JobPost, CallCenterNeed,
-  PaymentRequest, Notification, AuditLog, ToastMessage, UserRole,
+  PageType, User, Agent, JobPost, JobApplication, Placement,
+  Notification, AuditLog, ToastMessage, UserRole, Provider, SalaryDate,
 } from '@/lib/types';
 
 export function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -17,41 +17,39 @@ export function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise
 }
 
 const PUBLIC_PAGES: ReadonlySet<PageType> = new Set<PageType>([
-  'home', 'services', 'for-clients', 'careers', 'about', 'contact', 'academy',
-  'login', 'register-agent', 'register-client', 'pending-payment',
+  'home', 'services', 'careers', 'about', 'contact', 'academy',
+  'login', 'register-agent', 'pending-payment',
 ]);
 
 const VALID_PAGES: ReadonlySet<PageType> = new Set<PageType>([
-  'home','services','for-clients','careers','about','contact','academy',
-  'login','register-agent','register-client','pending-payment',
-  'agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications',
-  'client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile',
-  'admin-dashboard','admin-users','admin-job-posts',
-  'payment-taker-dashboard','messages','group-chat','support','tickets','reviews',
+  'home', 'services', 'careers', 'about', 'contact', 'academy',
+  'login', 'register-agent', 'pending-payment',
+  'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability', 'agent-applications', 'agent-my-work',
+  'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
+  'admin-placements', 'admin-salary-dates',
+  'messages', 'support', 'tickets',
 ]);
 
-// FEATURE: Role-based page access control
-// NOTE: payment_taker role is now MERGED into admin — same person handles both.
-// Any user whose DB role is 'payment_taker' is treated as 'admin' for nav/permissions.
-// (See `effectiveRole` helper below — also applied at login in /api/auth/login.)
+// FEATURE: Role-based page access control.
+// The only roles that can log in are 'agent' and 'admin'. Any legacy
+// 'payment_taker' or 'client' rows in the DB are treated as 'admin' for
+// navigation purposes (so the CEO can still log in with an old account).
 function effectiveRole(role: string | undefined): UserRole {
   if (!role) return 'visitor';
-  if (role === 'payment_taker') return 'admin';
+  if (role === 'payment_taker' || role === 'client') return 'admin';
   return role as UserRole;
 }
 
 const ROLE_PAGE_MAP: Partial<Record<UserRole, ReadonlySet<PageType>>> = {
-  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications','academy','marketplace','messages','group-chat','support','pending-payment','reviews']),
-  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile','academy','marketplace','messages','group-chat','support','pending-payment','reviews']),
-  // Admin = merged admin + payment_taker. One session, full access.
-  admin: new Set([
-    'admin-dashboard','admin-users','admin-job-posts','admin-products',
-    'payment-taker-dashboard','academy','messages','tickets','support','reviews','group-chat',
+  agent: new Set([
+    'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability',
+    'agent-applications', 'agent-my-work', 'academy', 'messages', 'support',
+    'pending-payment',
   ]),
-  // Legacy: payment_taker in DB is treated as admin (effectiveRole remaps it).
-  payment_taker: new Set([
-    'payment-taker-dashboard','admin-dashboard','admin-users','admin-job-posts',
-    'academy','messages','tickets','support','reviews','group-chat',
+  admin: new Set([
+    'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
+    'admin-placements', 'admin-salary-dates',
+    'academy', 'messages', 'tickets', 'support',
   ]),
 };
 
@@ -64,17 +62,13 @@ interface AuthSlice {
     name: string; email: string; password: string;
     role: UserRole; phone?: string;
     agentProfile?: Record<string, unknown>;
-    clientProfile?: Record<string, unknown>;
   }) => Promise<{ message?: string; requiresApproval?: boolean; userId?: string }>;
   logout: () => void;
-  // Update the current user in-place (used after avatar upload, profile edits,
-  // verification grants, etc.) without requiring a full re-login.
   updateCurrentUser: (patch: Partial<User>) => void;
 }
 
 const createAuthSlice = (
   set: (fn: (state: AppStore) => Partial<AppStore>) => void,
-  get: () => AppStore,
 ): AuthSlice => ({
   currentUser: null, isAuthenticated: false, isLoading: false,
   login: async (email: string, password: string) => {
@@ -106,23 +100,16 @@ interface NavSlice {
   currentPage: PageType;
   previousPages: PageType[];
   pendingChatUserId: string | null;
-  // Reviews: when the user clicks "Reviews" on an agent card or profile,
-  // we stash the target user id here so the ReviewsPage knows whose reviews
-  // to load + whether to auto-scroll to the "leave a review" form.
-  pendingReviewUserId: string | null;
-  pendingReviewScrollToForm: boolean;
-  // Group chat: when the client hires an agent from the Applications page,
-  // we stash the group chat id returned by /api/applications/hire here so
-  // the GroupChatPage can auto-open that specific per-job chat thread.
-  pendingGroupChatId: string | null;
+  // Career page → login flow: when an unauthenticated visitor clicks "Apply"
+  // on a job, we stash the job ID here so that after login/register we can
+  // deep-link them straight into the assessment for that job.
+  pendingJobId: string | null;
   navigateTo: (page: PageType) => void;
   goBack: () => void;
   isPublicPage: () => boolean;
   isRoleAllowed: (page: PageType) => boolean;
   syncFromHash: () => void;
-  setPendingReviewUserId: (userId: string | null, scrollToForm?: boolean) => void;
-  setPendingGroupChatId: (chatId: string | null) => void;
-  clearPendingGroupChatId: () => void;
+  setPendingJobId: (jobId: string | null) => void;
 }
 
 const createNavSlice = (
@@ -132,20 +119,16 @@ const createNavSlice = (
   currentPage: 'home',
   previousPages: [],
   pendingChatUserId: null,
-  pendingReviewUserId: null,
-  pendingReviewScrollToForm: false,
-  pendingGroupChatId: null,
+  pendingJobId: null,
   navigateTo: (page: PageType) => {
     const { currentPage } = get();
     if (page === currentPage) return;
-    // BUG FIX: Limit history depth to prevent memory growth
     set(() => ({ previousPages: [...get().previousPages.slice(-20), currentPage], currentPage: page }));
     if (typeof window !== 'undefined') {
       window.history.pushState({ page }, '', '#' + page);
       window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
     }
   },
-  // BUG FIX: goBack now properly pops from previousPages
   goBack: () => {
     const { previousPages } = get();
     if (previousPages.length === 0) return;
@@ -160,29 +143,24 @@ const createNavSlice = (
   isRoleAllowed: (page: PageType) => {
     const role = get().currentUser?.role;
     if (!role) return false;
-    // Treat payment_taker as admin (merged role)
     const effRole = effectiveRole(role);
-    const allowed = ROLE_PAGE_MAP[effRole] || ROLE_PAGE_MAP[role];
+    const allowed = ROLE_PAGE_MAP[effRole];
     if (!allowed) return false;
     return allowed.has(page);
   },
-  // FEATURE: Hash-based routing on page load
   syncFromHash: () => {
     if (typeof window === 'undefined') return;
     const hash = window.location.hash.replace('#', '');
+    // Support shareable job URL: #careers?job=<id>
+    if (hash.startsWith('careers')) {
+      set(() => ({ currentPage: 'careers' as PageType }));
+      return;
+    }
     if (hash && VALID_PAGES.has(hash as PageType)) {
       set(() => ({ currentPage: hash as PageType }));
     }
   },
-  setPendingReviewUserId: (userId, scrollToForm = false) => {
-    set(() => ({ pendingReviewUserId: userId, pendingReviewScrollToForm: scrollToForm }));
-  },
-  setPendingGroupChatId: (chatId) => {
-    set(() => ({ pendingGroupChatId: chatId }));
-  },
-  clearPendingGroupChatId: () => {
-    set(() => ({ pendingGroupChatId: null }));
-  },
+  setPendingJobId: (jobId) => { set(() => ({ pendingJobId: jobId })); },
 });
 
 interface UISlice {
@@ -214,12 +192,17 @@ const createUISlice = (
   removeToast: (id: string) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 });
 
-type DataCacheKey = 'agents' | 'clients' | 'jobPosts' | 'callCenterNeeds' | 'paymentRequests' | 'notifications' | 'auditLogs';
+type DataCacheKey = 'agents' | 'jobPosts' | 'jobApplications' | 'placements' | 'providers' | 'salaryDates' | 'notifications' | 'auditLogs';
 
 interface DataSlice {
-  agents: Agent[] | null; clients: Client[] | null; jobPosts: JobPost[] | null;
-  callCenterNeeds: CallCenterNeed[] | null; paymentRequests: PaymentRequest[] | null;
-  notifications: Notification[] | null; auditLogs: AuditLog[] | null;
+  agents: Agent[] | null;
+  jobPosts: JobPost[] | null;
+  jobApplications: JobApplication[] | null;
+  placements: Placement[] | null;
+  providers: Provider[] | null;
+  salaryDates: SalaryDate[] | null;
+  notifications: Notification[] | null;
+  auditLogs: AuditLog[] | null;
   setData: (key: DataCacheKey, data: unknown) => void;
   getData: (key: DataCacheKey) => unknown;
 }
@@ -227,8 +210,8 @@ interface DataSlice {
 const createDataSlice = (
   set: (fn: (state: AppStore) => Partial<AppStore>) => void,
 ): DataSlice => ({
-  agents: null, clients: null, jobPosts: null, callCenterNeeds: null,
-  paymentRequests: null, notifications: null, auditLogs: null,
+  agents: null, jobPosts: null, jobApplications: null, placements: null,
+  providers: null, salaryDates: null, notifications: null, auditLogs: null,
   setData: (key, data) => set(() => ({ [key]: data })),
   getData: (key) => { const store = useAppStore.getState(); return (store as Record<string, unknown>)[key] ?? null; },
 });
@@ -238,7 +221,7 @@ export type AppStore = AuthSlice & NavSlice & UISlice & DataSlice;
 export const useAppStore = create<AppStore>()(
   persist(
     (...args) => ({
-      ...createAuthSlice(args[0], args[1]),
+      ...createAuthSlice(args[0]),
       ...createNavSlice(args[0], args[1]),
       ...createUISlice(args[0], args[1]),
       ...createDataSlice(args[0]),
@@ -250,8 +233,8 @@ export const useAppStore = create<AppStore>()(
         isAuthenticated: state.isAuthenticated,
         currentPage: state.currentPage,
         previousPages: state.previousPages,
+        pendingJobId: state.pendingJobId,
       }),
     }
   )
 );
-

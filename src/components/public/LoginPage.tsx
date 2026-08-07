@@ -1,20 +1,20 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Loader2, AlertCircle, ArrowRight, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAppStore } from '@/lib/store';
 
 const ROLE_DASHBOARD: Record<string, string> = {
-  agent: 'agent-dashboard', client: 'client-dashboard',
-  payment_taker: 'payment-taker-dashboard', admin: 'admin-dashboard',
+  agent: 'agent-dashboard',
+  admin: 'admin-dashboard',
   visitor: 'home',
 };
 
 export default function LoginPage() {
-  const { login, navigateTo, addToast, currentUser, isAuthenticated } = useAppStore();
+  const { login, navigateTo, addToast, currentUser, isAuthenticated, pendingJobId } = useAppStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -23,10 +23,17 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isAuthenticated && currentUser) {
-      const dash = ROLE_DASHBOARD[currentUser.role] || 'home';
-      navigateTo(dash as never);
+      // If the user came from a "Apply Now" click on the career page,
+      // send them straight to the agent dashboard which will surface the
+      // pending-job assessment modal.
+      if (pendingJobId && currentUser.role === 'agent') {
+        navigateTo('agent-dashboard' as never);
+      } else {
+        const dash = ROLE_DASHBOARD[currentUser.role] || 'home';
+        navigateTo(dash as never);
+      }
     }
-  }, [isAuthenticated, currentUser]);
+  }, [isAuthenticated, currentUser, pendingJobId, navigateTo]);
 
   const handleLogin = async () => {
     setError('');
@@ -38,8 +45,14 @@ export default function LoginPage() {
       if (!user) return;
 
       addToast({ title: 'Welcome back!', description: `Signed in as ${user.name}`, variant: 'success' });
-      const dash = ROLE_DASHBOARD[user.role] || 'home';
-      navigateTo(dash as never);
+
+      // Same redirect logic as the useEffect above — but immediate.
+      if (store.pendingJobId && user.role === 'agent') {
+        navigateTo('agent-dashboard' as never);
+      } else {
+        const dash = ROLE_DASHBOARD[user.role] || 'home';
+        navigateTo(dash as never);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid email or password');
     } finally {
@@ -50,14 +63,11 @@ export default function LoginPage() {
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); handleLogin(); };
 
   return (
-    <main
-      className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16"
-      style={{ backgroundColor: '#0B1A2E' }}
-    >
+    <main className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-16 bg-[#0B1A2E]">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
         <div className="mb-2">
           <button onClick={() => navigateTo('home')} className="inline-flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors text-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            <ArrowRight className="h-3.5 w-3.5 rotate-180" />
             <span className="text-gray-300">Back to Home</span>
           </button>
         </div>
@@ -68,10 +78,7 @@ export default function LoginPage() {
               alt="Gig Solutions"
               className="h-16 w-auto"
               style={{ objectFit: 'contain' }}
-              onError={(e) => {
-                // Fallback to the smaller variant if the wide logo fails
-                (e.currentTarget as HTMLImageElement).src = '/logo-wide-40.png';
-              }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/logo-wide-40.png'; }}
             />
           </div>
           <p className="mt-2 text-sm text-gray-300">Sign in to your account</p>
@@ -104,17 +111,21 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="my-6 text-center space-y-2">
-            <p className="text-sm text-gray-500">Don&apos;t have an account?</p>
-            <div className="flex gap-3 justify-center">
-              <button onClick={() => navigateTo('register-agent')} className="text-sm font-semibold text-[#16A34A] hover:text-[#22c55e] transition-colors">
-                Register as Agent
-              </button>
-              <span className="text-gray-400">|</span>
-              <button onClick={() => navigateTo('register-client')} className="text-sm font-semibold text-blue-500 hover:text-blue-400 transition-colors">
-                Register as Call Center
-              </button>
-            </div>
+          {/* Visible Register CTA */}
+          <div className="mt-6 pt-6 border-t border-gray-100">
+            <p className="text-center text-sm text-gray-500 mb-3">Don&apos;t have an account?</p>
+            <Button
+              variant="outline"
+              className="w-full border-[#16A34A]/40 text-[#16A34A] hover:bg-[#16A34A]/10 font-semibold py-5"
+              onClick={() => navigateTo('register-agent')}
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              Create a Free Account
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+            <p className="mt-3 text-center text-xs text-gray-400">
+              Free to register. No payment required to apply for jobs.
+            </p>
           </div>
         </div>
       </motion.div>

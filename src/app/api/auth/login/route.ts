@@ -8,11 +8,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
     }
 
-    // Normalize the email: trim whitespace + lowercase. SQLite's findUnique
-    // is case-sensitive on email, so without this, users who type
-    // "Payments@..." or "PAYMENTS@..." get "Invalid credentials" even with
-    // the correct password. This is the most common cause of "my credentials
-    // don't work" reports.
     const normalizedEmail = String(email).trim().toLowerCase();
 
     const user = await db.user.findUnique({ where: { email: normalizedEmail } });
@@ -36,32 +31,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Your account has been suspended. Please contact support.' }, { status: 403 });
     }
 
-    // Allow pending_approval users to log in (they need to access payment chat)
-    // Parse verificationTiers JSON string into an array for the client.
-    let verificationTiers: string[] = [];
-    try {
-      const parsed = JSON.parse(user.verificationTiers || '[]');
-      if (Array.isArray(parsed)) verificationTiers = parsed.filter((t) => typeof t === 'string');
-    } catch { /* leave empty */ }
-    // ROLE MERGE: payment_taker is now treated as admin — one session, full access.
-    // The DB may still hold 'payment_taker' for legacy rows; we normalize at login
-    // so the UI never has to special-case it.
-    const effectiveRole = user.role === 'payment_taker' ? 'admin' : user.role;
+    // Role merge: legacy 'payment_taker' or 'client' rows are treated as 'admin'
+    // so the CEO can still log in with an old account.
+    const effectiveRole = (user.role === 'payment_taker' || user.role === 'client') ? 'admin' : user.role;
+
     return NextResponse.json({
       user: {
         id: user.id, email: user.email, name: user.name,
         role: effectiveRole, phone: user.phone, avatar: user.avatar,
         isActive: user.isActive, accountStatus: user.accountStatus,
-        verificationTiers,
-        verifiedAt: user.verifiedAt ? user.verifiedAt.toISOString() : null,
-        gigScore: user.gigScore || 0,
-        // Payment gating fields — drive the agent apply gate and the
-        // call center "Job Links" gate. `paidUntil` is null when the
-        // user has never paid; an expired subscription shows up as
-        // paidUntil < now, which the client treats the same as unpaid.
-        paid: !!user.paid,
-        paidUntil: user.paidUntil ? user.paidUntil.toISOString() : null,
-        paymentTier: user.paymentTier || null,
       },
     });
   } catch (error) {

@@ -1,153 +1,138 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { User, FileText, Calendar, MessageCircle, ArrowRight, AlertCircle, RefreshCw, Briefcase, MapPin, Clock, Building2, CheckCircle2, CreditCard, Lock, ShieldCheck, X } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  User, FileText, Calendar, MessageCircle, ArrowRight, AlertCircle, RefreshCw,
+  Briefcase, MapPin, Clock, CheckCircle2, Building2, DollarSign, ChevronRight,
+  Sparkles, TrendingUp, Award, PlayCircle,
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAppStore } from '@/lib/store';
-import { VerifiedBadge, VerifiedBadgeStyles, VerifiedBadgeStack, topVerificationTier, type VerificationTier } from '@/components/ui/verified-badge';
+import JobAssessmentModal from '@/components/portal/JobAssessmentModal';
+import type { JobPost, Placement } from '@/lib/types';
 
-interface ClientNeed {
-  id: string;
-  title: string;
-  description: string;
-  requirements: string[];
-  createdAt: string;
-  client: {
-    id?: string;
-    companyName: string;
-    industry: string | null;
-    companyLink?: string | null;
-    user?: { id?: string; avatar?: string | null };
-  };
-}
-
-const POLL_INTERVAL = 15000;
+const PAY_LABEL: Record<string, string> = {
+  'hourly': 'per hour', 'weekly': 'per week', 'bi-weekly': 'bi-weekly', 'monthly': 'per month',
+};
 
 export default function AgentDashboard() {
-  const { currentUser, navigateTo, addToast } = useAppStore();
+  const { currentUser, navigateTo, addToast, pendingJobId, setPendingJobId } = useAppStore();
   const [agent, setAgent] = useState<any>(null);
+  const [jobs, setJobs] = useState<JobPost[]>([]);
+  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+  const [placements, setPlacements] = useState<Placement[]>([]);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
-  const [needs, setNeeds] = useState<ClientNeed[]>([]);
-  const [needsLoading, setNeedsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
-  const [totalApplications, setTotalApplications] = useState(0);
-  const [applyingNeed, setApplyingNeed] = useState<string | null>(null);
-  // Payment gate modal — when an unpaid agent clicks "I'm Interested", we
-  // show a payment card (tier + price + Pay & Activate button) instead of
-  // immediately redirecting to the payment chat.
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [applyingJob, setApplyingJob] = useState<JobPost | null>(null);
+  const [assessmentJob, setAssessmentJob] = useState<JobPost | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isMountedRef = useRef(true);
 
-  const loadData = useCallback(() => {
+  const loadData = useCallback(async () => {
     if (!currentUser) return;
     const headers = { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role };
+    setError(null);
+    try {
+      const [agentRes, jobsRes, appsRes, placementsRes, msgsRes] = await Promise.all([
+        fetch('/api/agents?userId=' + currentUser.id, { headers }),
+        fetch('/api/job-posts', { headers }),
+        fetch('/api/job-applications?agentId=' + (currentUser as any)._agentId, { headers }).catch(() => null),
+        fetch('/api/placements?agentId=' + (currentUser as any)._agentId, { headers }).catch(() => null),
+        fetch('/api/messages?userId=' + currentUser.id, { headers }).catch(() => null),
+      ]);
 
-    Promise.all([
-      fetch('/api/agents?userId=' + currentUser.id, { headers }).then(r => {
-        if (!r.ok) throw new Error('Failed to load profile');
-        return r.json();
-      }),
-      fetch('/api/messages?userId=' + currentUser.id, { headers }).then(r => {
-        if (!r.ok) throw new Error('Failed to load messages');
-        return r.json();
-      }),
-      fetch('/api/call-center-needs', { headers }).then(r => {
-        if (!r.ok) throw new Error('Failed to load needs');
-        return r.json();
-      }),
-      fetch('/api/call-center-needs/interest', { headers }).then(r => {
-        if (!r.ok) return { applications: [] };
-        return r.json();
-      }),
+      const agentData = await agentRes.json();
+      const me = agentData.id ? agentData : (agentData.agents || []).find((a: any) => a.userId === currentUser.id);
+      if (me) {
+        setAgent(me);
+        // Now fetch applications & placements using the real agentId
+        const [appsRes2, placementsRes2] = await Promise.all([
+          fetch('/api/job-applications?agentId=' + me.id, { headers }).then(r => r.json()).catch(() => ({ applications: [] })),
+          fetch('/api/placements?agentId=' + me.id, { headers }).then(r => r.json()).catch(() => ({ placements: [] })),
+        ]);
+        setAppliedIds(new Set((appsRes2.applications || []).map((a: any) => a.jobPostId)));
+        setPlacements(placementsRes2.placements || []);
+      }
 
-    ])
-      .then(([agentData, msgData, needsData, interestData]) => {
-        if (!isMountedRef.current) return;
-        if (agentData && agentData.id) {
-          setAgent(agentData);
-        } else if (agentData.agents) {
-          const me = agentData.agents.find((a: any) => a.userId === currentUser.id);
-          if (me) setAgent(me);
-        }
-        if (msgData.conversations) {
-          setUnreadMsgs(msgData.conversations.reduce((sum: number, c: any) => sum + (c.unreadCount || 0), 0));
-        }
-        if (needsData.needs) setNeeds(needsData.needs);
-        const apps = interestData.applications || [];
-        setTotalApplications(apps.length);
-        setAppliedIds(new Set(apps.map((a: any) => a.needId).filter(Boolean)));
-      })
-      .catch(err => {
-        if (isMountedRef.current) setError(err.message);
-      })
-      .finally(() => {
-        if (isMountedRef.current) { setLoading(false); setNeedsLoading(false); }
-      });
+      const jobsData = await jobsRes.json();
+      setJobs(jobsData.jobPosts || []);
+
+      if (msgsRes && msgsRes.ok) {
+        const msgData = await msgsRes.json();
+        setUnreadMsgs((msgData.conversations || []).reduce((s: number, c: any) => s + (c.unreadCount || 0), 0));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+    } finally {
+      setLoading(false);
+    }
   }, [currentUser]);
 
   useEffect(() => {
-    isMountedRef.current = true;
     if (!currentUser) return;
     setLoading(true);
-    setError(null);
     loadData();
-    pollRef.current = setInterval(loadData, POLL_INTERVAL);
-    return () => {
-      isMountedRef.current = false;
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+    pollRef.current = setInterval(loadData, 30000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [currentUser, loadData]);
 
-  const handleApply = (need: ClientNeed) => {
-    if (applyingNeed || appliedIds.has(need.id)) return;
-    // ─── Payment gate ──────────────────────────────────────────────────
-    // Agents need an active subscription to apply. If unpaid or expired,
-    // show a payment card modal (tier + price + Pay & Activate button)
-    // instead of immediately redirecting to the payment chat.
-    const paidUntil = (currentUser as any)?.paidUntil;
-    const isPaid = !!(currentUser as any)?.paid && paidUntil && new Date(paidUntil) > new Date();
-    if (!isPaid) {
-      setShowPaymentModal(true);
+  // ─── Pending job assessment flow ────────────────────────────────────────
+  // If the user clicked "Apply" on the career page (or followed a shared
+  // job link), pendingJobId will be set. We auto-open the assessment modal
+  // for that specific job.
+  useEffect(() => {
+    if (!pendingJobId || jobs.length === 0 || !agent) return;
+    const target = jobs.find(j => j.id === pendingJobId);
+    if (target) {
+      setAssessmentJob(target);
+    }
+  }, [pendingJobId, jobs, agent]);
+
+  const handleApply = (job: JobPost) => {
+    if (appliedIds.has(job.id)) {
+      addToast({ title: 'Already Applied', description: 'You have already applied for this job.', variant: 'default' });
       return;
     }
-    setApplyingNeed(need.id);
-    fetch('/api/call-center-needs/interest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
-      body: JSON.stringify({ needId: need.id }),
-    })
-      .then(r => {
-        if (r.ok) {
-          setAppliedIds(prev => new Set([...prev, need.id]));
-          setTotalApplications(prev => prev + 1);
-          addToast({ title: 'Application Sent!', description: 'You have successfully applied for "' + need.title + '". ' + (need.client?.companyName || 'The call center') + ' has been notified and will respond in your Messages.', variant: 'success' });
-          loadData();
-        } else if (r.status === 409) {
-          setAppliedIds(prev => new Set([...prev, need.id]));
-          addToast({ title: 'Already Applied', description: 'You have already applied for this need.', variant: 'default' });
-        } else if (r.status === 402) {
-          // Server also enforces the gate — show the payment modal
-          setShowPaymentModal(true);
-        } else {
-          return r.json().then(d => { throw new Error(d.error || 'Failed'); });
-        }
-      })
-      .catch(err => addToast({ title: 'Error', description: err.message, variant: 'destructive' }))
-      .finally(() => setApplyingNeed(null));
+    setAssessmentJob(job);
   };
 
-  const quickActions = [
-    { label: 'Edit Profile', desc: 'Update your personal info and skills', page: 'agent-profile' as const, icon: User, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Documents', desc: 'Upload your resume, ID, certificates', page: 'agent-documents' as const, icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'Availability', desc: 'Set your available dates and shifts', page: 'agent-availability' as const, icon: Calendar, color: 'text-green-600', bg: 'bg-green-50' },
-    { label: 'Messages', desc: unreadMsgs + ' unread message' + (unreadMsgs !== 1 ? 's' : ''), page: 'messages' as const, icon: MessageCircle, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'My Applications', desc: totalApplications + ' application' + (totalApplications !== 1 ? 's' : '') + ' submitted', page: 'agent-applications' as const, icon: Briefcase, color: 'text-green-600', bg: 'bg-green-50' },
-  ];
+  const handleAssessmentComplete = async (result: { passed: boolean; score: number; answers: any[] }) => {
+    if (!result.passed || !assessmentJob || !currentUser) {
+      // Failed — keep modal open so the user can retry (handled inside the modal)
+      return;
+    }
+    // Save the assessment + create the application
+    try {
+      const res = await fetch('/api/job-applications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
+        body: JSON.stringify({
+          jobPostId: assessmentJob.id,
+          assessmentScore: result.score,
+          assessmentPassed: result.passed,
+          answers: result.answers,
+        }),
+      });
+      if (res.ok) {
+        addToast({
+          title: 'Application Submitted!',
+          description: 'You applied for "' + assessmentJob.jobTitle + '". Our team will review and reach out.',
+          variant: 'success',
+        });
+        setAppliedIds(prev => new Set([...prev, assessmentJob.id]));
+        setPendingJobId(null);
+        setAssessmentJob(null);
+        loadData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        addToast({ title: 'Failed to submit', description: data.error || 'Please try again', variant: 'destructive' });
+      }
+    } catch (e) {
+      addToast({ title: 'Network error', description: 'Please try again', variant: 'destructive' });
+    }
+  };
 
   if (loading) {
     return (
@@ -172,40 +157,36 @@ export default function AgentDashboard() {
     );
   }
 
+  const activePlacements = placements.filter(p => p.status === 'active');
+  const nextSalary = activePlacements
+    .map(p => p.nextSalaryDate)
+    .filter(Boolean)
+    .sort((a, b) => new Date(a!).getTime() - new Date(b!).getTime())[0];
+
+  const quickActions = [
+    { label: 'My Work', desc: activePlacements.length + ' active placement' + (activePlacements.length !== 1 ? 's' : ''), page: 'agent-my-work' as const, icon: Briefcase, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'My Applications', desc: appliedIds.size + ' application' + (appliedIds.size !== 1 ? 's' : '') + ' submitted', page: 'agent-applications' as const, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
+    { label: 'Edit Profile', desc: 'Update your personal info and skills', page: 'agent-profile' as const, icon: User, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Documents', desc: 'Upload your resume, ID, certificates', page: 'agent-documents' as const, icon: FileText, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'Availability', desc: 'Set your available dates and shifts', page: 'agent-availability' as const, icon: Calendar, color: 'text-pink-600', bg: 'bg-pink-50' },
+    { label: 'Messages', desc: unreadMsgs + ' unread message' + (unreadMsgs !== 1 ? 's' : ''), page: 'messages' as const, icon: MessageCircle, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  ];
+
   return (
     <div className="space-y-6">
-      <VerifiedBadgeStyles />
+      {/* Welcome card */}
       <Card className="bg-gradient-to-r from-[#0B1A2E] to-[#1a2d4a] border-0">
         <CardContent className="p-6 text-white">
           <div className="flex items-center gap-4">
-            <div className="relative shrink-0">
-              <Avatar className="h-14 w-14 ring-2 ring-white/20 shadow-lg">
-                {currentUser?.avatar && <AvatarImage src={currentUser.avatar} alt={currentUser?.name || 'User'} />}
-                <AvatarFallback className="bg-[#16A34A] text-white text-lg font-bold">
-                  {(currentUser?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              {(() => {
-                const tiers: VerificationTier[] = Array.isArray((currentUser as any)?.verificationTiers) ? (currentUser!.verificationTiers as VerificationTier[]) : [];
-                const topTier = topVerificationTier(tiers);
-                return topTier ? (
-                  <span className="absolute -bottom-1 -right-1">
-                    <VerifiedBadge tier={topTier} iconOnly size="sm" verifiedAt={(currentUser as any)?.verifiedAt} />
-                  </span>
-                ) : null;
-              })()}
-            </div>
+            <Avatar className="h-14 w-14 ring-2 ring-white/20 shadow-lg">
+              {currentUser?.avatar && <AvatarImage src={currentUser.avatar} alt={currentUser?.name || 'User'} />}
+              <AvatarFallback className="bg-[#16A34A] text-white text-lg font-bold">
+                {(currentUser?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl font-bold">Welcome back, {currentUser?.name?.split(' ')[0]}!</h2>
-              </div>
-              <p className="text-sm text-gray-300 mt-1">Your profile is active and visible to call centers browsing the agent bank.</p>
-              {(() => {
-                const tiers: VerificationTier[] = Array.isArray((currentUser as any)?.verificationTiers) ? (currentUser!.verificationTiers as VerificationTier[]) : [];
-                return tiers.length > 0 ? (
-                  <div className="mt-2"><VerifiedBadgeStack tiers={tiers} size="xs" /></div>
-                ) : null;
-              })()}
+              <h2 className="text-xl font-bold">Welcome back, {currentUser?.name?.split(' ')[0]}!</h2>
+              <p className="text-sm text-gray-300 mt-1">Browse open positions below. Apply with a quick skills assessment.</p>
             </div>
           </div>
           {agent?.skills?.length > 0 && (
@@ -218,13 +199,14 @@ export default function AgentDashboard() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('agent-dashboard' as never)}>
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Available Jobs</p>
-                <p className="text-2xl font-bold mt-1">{needs.length}</p>
+                <p className="text-sm text-gray-500">Open Jobs</p>
+                <p className="text-2xl font-bold mt-1">{jobs.length}</p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center">
                 <Briefcase className="h-5 w-5 text-blue-600" />
@@ -237,11 +219,25 @@ export default function AgentDashboard() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">My Applications</p>
-                <p className="text-2xl font-bold mt-1">{totalApplications}</p>
+                <p className="text-sm text-gray-500">Applications</p>
+                <p className="text-2xl font-bold mt-1">{appliedIds.size}</p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-green-50 flex items-center justify-center">
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo('agent-my-work' as never)}>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Active Work</p>
+                <p className="text-2xl font-bold mt-1">{activePlacements.length}</p>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                <TrendingUp className="h-5 w-5 text-purple-600" />
               </div>
             </div>
           </CardContent>
@@ -261,96 +257,108 @@ export default function AgentDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Next payday banner */}
+      {nextSalary && (
+        <Card className="bg-gradient-to-r from-[#16A34A] to-[#22c55e] border-0">
+          <CardContent className="p-5 text-white">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center">
+                <DollarSign className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs uppercase tracking-wider text-white/80">Next Payday</p>
+                <p className="text-lg font-bold">{new Date(nextSalary).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+              </div>
+              <Button variant="outline" size="sm" className="bg-white/10 border-white/30 text-white hover:bg-white/20" onClick={() => navigateTo('agent-my-work' as never)}>
+                View Details <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Available jobs */}
       <Card>
         <CardContent className="p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Briefcase className="h-5 w-5 text-green-600" />
               <h3 className="text-sm font-semibold">Available Jobs</h3>
-              <Badge variant="secondary" className="text-xs">{needs.length} job{needs.length !== 1 ? "s" : ""}{needs.filter(n => !appliedIds.has(n.id)).length > 0 ? " · " + needs.filter(n => !appliedIds.has(n.id)).length + " new" : ""}</Badge>
+              <Badge variant="secondary" className="text-xs">{jobs.length} job{jobs.length !== 1 ? 's' : ''}</Badge>
             </div>
           </div>
-          {needsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin h-6 w-6 border-2 border-green-500 border-t-transparent rounded-full" />
-            </div>
-          ) : needs.length === 0 ? (
+          {jobs.length === 0 ? (
             <div className="text-center py-8 text-gray-400">
               <Briefcase className="h-10 w-10 mx-auto mb-2 opacity-30" />
               <p className="text-sm">No jobs posted yet. Check back soon!</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {needs.map(need => {
-                const isApplied = appliedIds.has(need.id);
-                const isApplying = applyingNeed === need.id;
+              {jobs.slice(0, 8).map(job => {
+                const isApplied = appliedIds.has(job.id);
                 return (
-                  <div key={need.id} className="border rounded-xl p-4 hover:shadow-sm transition-shadow">
+                  <div key={job.id} className="border rounded-xl p-4 hover:shadow-sm transition-shadow">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-semibold text-gray-900">{need.title}</h4>
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <h4 className="text-sm font-semibold text-gray-900">{job.jobTitle}</h4>
                           {isApplied && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-medium">
                               <CheckCircle2 className="h-3 w-3" />Applied
                             </span>
                           )}
-                        </div>
-                        <div className="flex items-center gap-3 mt-1.5">
-                          <span className="flex items-center gap-1 text-xs text-gray-500">
-                            <Avatar className="h-4 w-4">
-                              {need.client?.user?.avatar && <AvatarImage src={need.client.user.avatar} alt={need.client?.companyName || 'Call Center'} />}
-                              <AvatarFallback className="bg-[#0B1A2E] text-white text-[8px] font-bold">{(need.client?.companyName || 'CC').slice(0, 2).toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <Building2 className="h-3 w-3" />{need.client?.companyName || 'Call Center'}
-                          </span>
-                          {need.client?.industry && (
-                            <span className="flex items-center gap-1 text-xs text-gray-400">
-                              <MapPin className="h-3 w-3" />{need.client.industry}
-                            </span>
+                          {job.category && (
+                            <Badge variant="outline" className="text-[10px]">{job.category}</Badge>
                           )}
-                          <span className="flex items-center gap-1 text-xs text-gray-400">
-                            <Clock className="h-3 w-3" />{new Date(need.createdAt).toLocaleDateString()}
-                          </span>
                         </div>
-                        {need.description && (
-                          <p className="text-xs text-gray-600 mt-2 line-clamp-2">{need.description}</p>
-                        )}
-                        {need.requirements && need.requirements.length > 0 && (
+                        <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500 flex-wrap">
+                          <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{job.location || 'Remote'}</span>
+                          {job.hourlyRate > 0 && (
+                            <span className="flex items-center gap-1 text-[#16A34A] font-semibold"><DollarSign className="h-3 w-3" />${job.hourlyRate.toFixed(2)} {PAY_LABEL[job.payFrequency] || ''}</span>
+                          )}
+                          {job.shift && (
+                            <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{job.shift}</span>
+                          )}
+                          <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{new Date(job.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        <p className="text-xs text-gray-600 mt-2 line-clamp-2">{job.description}</p>
+                        {job.skills && job.skills.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2">
-                            {need.requirements.slice(0, 5).map((req, i) => (
-                              <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">{req}</Badge>
+                            {job.skills.slice(0, 4).map((s, i) => (
+                              <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0">{s}</Badge>
                             ))}
-                            {need.requirements.length > 5 && (
-                              <span className="text-[10px] text-gray-400 self-center">+{need.requirements.length - 5} more</span>
-                            )}
                           </div>
                         )}
                       </div>
                       <Button
                         size="sm"
-                        className={
-                          isApplied
-                            ? 'bg-gray-100 text-gray-400 hover:bg-gray-100 text-xs shrink-0 h-8 cursor-default'
-                            : 'bg-[#16A34A] text-white hover:bg-[#16A34A]/90 text-xs shrink-0 h-8'
-                        }
-                        onClick={() => !isApplied && handleApply(need)}
-                        disabled={isApplied || isApplying}
+                        className={isApplied
+                          ? 'bg-gray-100 text-gray-400 hover:bg-gray-100 text-xs shrink-0 h-8 cursor-default'
+                          : 'bg-[#16A34A] text-white hover:bg-[#16A34A]/90 text-xs shrink-0 h-8'}
+                        onClick={() => !isApplied && handleApply(job)}
+                        disabled={isApplied}
                       >
-                        {isApplying ? 'Sending...' : isApplied ? 'Applied' : "I'm Interested"}
-                        {!isApplied && !isApplying && <ArrowRight className="h-3 w-3 ml-1" />}
-                        {isApplied && <CheckCircle2 className="h-3 w-3 ml-1" />}
+                        {isApplied ? (<><CheckCircle2 className="h-3 w-3 mr-1" />Applied</>) : (<>Apply <ArrowRight className="h-3 w-3 ml-1" /></>)}
                       </Button>
                     </div>
                   </div>
                 );
               })}
+              {jobs.length > 8 && (
+                <div className="text-center pt-2">
+                  <Button variant="outline" size="sm" onClick={() => navigateTo('careers' as never)}>
+                    View All Jobs on Career Page <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Quick actions */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {quickActions.map(a => {
           const Icon = a.icon;
           return (
@@ -367,7 +375,8 @@ export default function AgentDashboard() {
         })}
       </div>
 
-            {agent && (
+      {/* Profile summary */}
+      {agent && (
         <Card>
           <CardContent className="p-5">
             <h3 className="text-sm font-semibold mb-3">Profile Summary</h3>
@@ -387,7 +396,7 @@ export default function AgentDashboard() {
       {!agent && (
         <Card className="border-amber-200 bg-amber-50/50">
           <CardContent className="p-6 text-center">
-            <p className="text-sm text-amber-700 mb-3">Your agent profile hasn't been set up yet. Complete your profile to appear in search results.</p>
+            <p className="text-sm text-amber-700 mb-3">Your agent profile hasn&apos;t been set up yet. Complete your profile to apply for jobs.</p>
             <Button size="sm" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90" onClick={() => navigateTo('agent-profile')}>
               <User className="h-3.5 w-3.5 mr-1.5" />Set Up Profile
             </Button>
@@ -395,74 +404,14 @@ export default function AgentDashboard() {
         </Card>
       )}
 
-      {/* ─── Payment gate modal ────────────────────────────────────────────
-          Shown when an unpaid agent tries to apply for a job. Displays the
-          subscription tier, price, and a "Pay & Activate" button that
-          redirects to the payment chat (PendingPaymentPage). */}
-      {showPaymentModal && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60"
-          onClick={() => setShowPaymentModal(false)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setShowPaymentModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-              aria-label="Close"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <div className="flex flex-col items-center text-center">
-              <div className="h-16 w-16 rounded-full bg-amber-100 flex items-center justify-center mb-4">
-                <Lock className="h-8 w-8 text-amber-600" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Subscription Required</h3>
-              <p className="text-sm text-gray-600 mb-6">
-                Activate your Agent Quarterly subscription to apply for jobs and get discovered by call centers.
-              </p>
-
-              {/* Price card */}
-              <div className="w-full bg-gray-50 rounded-xl border border-amber-200 p-5 mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Briefcase className="h-4 w-4 text-amber-600" />
-                    <span className="font-semibold text-gray-900">Agent Quarterly</span>
-                  </div>
-                  <Badge className="bg-amber-100 text-amber-700">3 months</Badge>
-                </div>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-3xl font-bold text-gray-900">1,000</span>
-                  <span className="text-sm font-medium text-gray-500">HTG / quarter</span>
-                </div>
-                <div className="mt-2 text-xs text-gray-500">
-                  Apply for any job on the platform for 3 months from activation.
-                </div>
-              </div>
-
-              <Button
-                className="w-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90 py-3 text-base font-semibold"
-                onClick={() => {
-                  setShowPaymentModal(false);
-                  navigateTo('pending-payment');
-                }}
-              >
-                <CreditCard className="h-4 w-4 mr-2" />
-                Pay & Activate
-              </Button>
-
-              <div className="mt-4 flex items-start gap-2 text-xs text-gray-500 max-w-sm">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                <span>
-                  You will be redirected to a chat with the admin to complete your payment.
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Assessment modal */}
+      {assessmentJob && (
+        <JobAssessmentModal
+          jobId={assessmentJob.id}
+          jobTitle={assessmentJob.jobTitle}
+          onClose={() => { setAssessmentJob(null); setPendingJobId(null); }}
+          onComplete={handleAssessmentComplete}
+        />
       )}
     </div>
   );

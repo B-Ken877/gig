@@ -7,12 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================================================
+// USER — only admin and agent roles exist in the new philosophy.
+// (Legacy 'client' and 'payment_taker' rows are kept for backward compat
+//  but no new ones can be created through the UI.)
+// ============================================================================
+
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
   password      String
   name          String
-  role          String   @default("visitor")
+  role          String   @default("agent")
   phone         String?
   avatar        String?
   isActive      Boolean  @default(true)
@@ -21,46 +27,12 @@ model User {
   updatedAt     DateTime @updatedAt
 
   agent   Agent?
-  client  Client?
   conversationsAsUser1 Conversation[] @relation("ConvUser1")
   conversationsAsUser2 Conversation[] @relation("ConvUser2")
   auditLogs   AuditLog[]
   notifications Notification[]
-  paymentRequestsHandled PaymentRequest[] @relation("PaymentTaker")
-  paymentRequests PaymentRequest[]
   pushSubscription  PushSubscription?
   supportTickets   SupportTicket[]
-  // ─── Verification + Gig Score (premium badges) ────────────────────────
-  // verificationTiers stores a JSON-encoded array of tier names, e.g.
-  //   ["verified","top_rated"]
-  // Tier names match the VerificationTier union in the UI:
-  //   verified | top_rated | trusted_partner | background_checked | elite
-  verificationTiers String   @default("[]")
-  verifiedAt        DateTime?
-  verifiedBy        String?
-  gigScore          Int      @default(0)
-  gigScoreUpdatedAt DateTime?
-  // ─── Subscription / Payment gating ────────────────────────────────────
-  // Registration is FREE for everyone. Payment is only required when an
-  // agent tries to apply for a job, or when a call center tries to access
-  // the "Job Links" tab. The admin toggles `paid=true` after approving a
-  // payment in the payment chat. `paidUntil` is computed from the role's
-  // billing cycle (agent = +3 months, client = +12 months). `paymentTier`
-  // records which tier was purchased: 'agent_quarterly' | 'client_yearly'.
-  paid              Boolean  @default(false)
-  paidUntil         DateTime?
-  paymentTier       String?
-  // ─── Reviews (Trustpilot-style) ───────────────────────────────────────
-  reviewsGiven     Review[] @relation("ReviewReviewer")
-  reviewsReceived  Review[] @relation("ReviewReviewee")
-  // ─── Group Chat (one PER JOB per client owner; agents can be members of many) ─
-  groupChatsOwned   GroupChat[]
-  groupChatMembers  GroupChatMember[]
-  groupChatMessages GroupChatMessage[]
-  // ─── AI Training usage tracking (3 sessions per 24h) ──────────────────
-  aiTrainingUsage   AiTrainingUsage[]
-  // ─── Marketplace ─────────────────────────────────────────────────────
-  productOrders     ProductOrder[]
   @@index([role])
   @@index([email])
 }
@@ -95,92 +67,160 @@ model Agent {
   availabilitySlots AvailabilitySlot[]
   notes           InternalNote[]
   assessments     Assessment[]
-  pipelineStages  PipelineStage[]
   placements      Placement[]
-  payments        Payment[]
+  jobApplications JobApplication[]
 
   @@index([status])
   @@index([country])
 }
 
-model Client {
+// ============================================================================
+// PROVIDER — internal-only. The public never sees this. The admin records
+// which third-party gave us a job to post, plus the commission we earn.
+// ============================================================================
+
+model Provider {
   id              String   @id @default(cuid())
-  userId          String   @unique
-  companyName     String
-  industry        String?
+  name            String
   contactPerson   String?
   phone           String?
-  billingAddress  String?
-  billingEmail    String?
-  taxId           String?
-  companyLink     String?
+  email           String?
+  notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   jobPosts        JobPost[]
-  callCenterNeeds CallCenterNeed[]
-  notes           InternalNote[]
-  contracts       Contract[]
-  payments        Payment[]
-  placements      Placement[]
-  staffingRequests StaffingRequest[]
 
-  @@index([industry])
+  @@index([name])
 }
+
+// ============================================================================
+// JOB POST — posted by the admin only. The admin assigns it to a Provider
+// (internal record) and sets a commission. The public career page only sees
+// the jobTitle, description, skills, hourlyRate, etc. — never the provider.
+// ============================================================================
 
 model JobPost {
   id              String   @id @default(cuid())
-  clientId        String?
-  companyName     String
-  companyLink     String?
   jobTitle        String
   description     String
+  skills          String   @default("[]")     // JSON array of strings
+  requirements    String   @default("[]")     // JSON array of strings
+  hourlyRate      Float    @default(0)
+  payFrequency    String   @default("bi-weekly") // hourly | weekly | bi-weekly | monthly
+  category        String?
+  shift           String?
+  location        String?  @default("Remote")
+  providerId      String?
+  commission      Float    @default(0)
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  client          Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  provider        Provider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  applications    JobApplication[]
+  placements      Placement[]
 
   @@index([isActive])
+  @@index([providerId])
+  @@index([category])
 }
 
-model CallCenterNeed {
+// ============================================================================
+// JOB APPLICATION — an agent applies for a JobPost. Before the application
+// is created, the agent MUST pass a per-job Assessment. The unique constraint
+// prevents duplicate applications for the same job.
+// ============================================================================
+
+model JobApplication {
   id              String   @id @default(cuid())
-  clientId        String
-  title           String
-  description     String
-  requirements    String   @default("[]")
-  isActive        Boolean  @default(true)
+  agentId         String
+  jobPostId       String
+  status          String   @default("applied") // applied | reviewed | hired | rejected
+  coverMessage    String?
+  assessmentScore Float?
+  assessmentPassed Boolean @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  groupChats      GroupChat[]
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  jobPost         JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
 
-  @@index([clientId])
-  @@index([isActive])
-}
-
-model PaymentRequest {
-  id              String   @id @default(cuid())
-  userId          String
-  role            String
-  feeType         String
-  amount          Float
-  currency        String   @default("HTG")
-  status          String   @default("pending")
-  handledBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Made optional to handle orphan records (user may have been deleted).
-  // The API routes already use optional chaining (p.user?.name) so this is safe.
-  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  handledByUser   User?    @relation("PaymentTaker", fields: [handledBy], references: [id])
-
+  @@unique([agentId, jobPostId])
+  @@index([agentId])
+  @@index([jobPostId])
   @@index([status])
-  @@index([userId])
+}
+
+// ============================================================================
+// PLACEMENT — when an agent is hired for a JobPost. This drives the agent's
+// "My Work" view and the admin's placement management table. The salary and
+// next salary date are defined by the admin.
+// ============================================================================
+
+model Placement {
+  id              String   @id @default(cuid())
+  agentId         String
+  jobPostId       String
+  position        String
+  startDate       DateTime?
+  endDate         DateTime?
+  salary          Float?
+  nextSalaryDate  DateTime?
+  status          String   @default("active") // active | completed | terminated
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  jobPost         JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([jobPostId])
+  @@index([status])
+}
+
+// ============================================================================
+// SALARY DATE — admin-defined pay schedule. Shown on agent dashboard so they
+// know when the next payday is. Global (not per-job) for simplicity; the
+// admin can mark which pay cycle each one belongs to via description.
+// ============================================================================
+
+model SalaryDate {
+  id              String   @id @default(cuid())
+  payDate         DateTime
+  frequency       String   @default("bi-weekly")
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([payDate])
+}
+
+// ============================================================================
+// ASSESSMENT — per-job. Created when an agent starts the assessment for a
+// specific JobPost. Passed assessments unlock the apply button.
+// ============================================================================
+
+model Assessment {
+  id              String   @id @default(cuid())
+  agentId         String
+  jobPostId       String?
+  section         String   @default("general")
+  totalQuestions  Int      @default(0)
+  correctAnswers  Int      @default(0)
+  score           Float    @default(0)
+  passed          Boolean  @default(false)
+  answers         String   @default("[]")
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([jobPostId])
+  @@index([section])
 }
 
 model Document {
@@ -222,7 +262,6 @@ model Notification {
 model InternalNote {
   id              String   @id @default(cuid())
   agentId         String?
-  clientId        String?
   authorId        String
   type            String
   content         String
@@ -230,7 +269,6 @@ model InternalNote {
   updatedAt       DateTime @updatedAt
 
   agent           Agent?   @relation(fields: [agentId], references: [id])
-  client          Client?  @relation(fields: [clientId], references: [id])
 }
 
 model AuditLog {
@@ -307,6 +345,7 @@ model PushSubscription {
 
   @@index([userId])
 }
+
 model SupportTicket {
   id              String   @id @default(cuid())
   userId          String
@@ -337,286 +376,4 @@ model TicketMessage {
 
   @@index([ticketId])
   @@index([createdAt])
-}
-
-// ============================================================================
-// NEW MODELS — previously missing, caused /api/assessments, /api/contracts,
-// /api/payments, /api/pipeline, /api/placements, /api/staffing-requests,
-// and /api/reports to crash with "Cannot read properties of undefined
-// (reading 'findMany')" because Prisma client didn't know about them.
-// ============================================================================
-
-model Assessment {
-  id              String   @id @default(cuid())
-  agentId         String
-  section         String   @default("general")
-  totalQuestions  Int      @default(0)
-  correctAnswers  Int      @default(0)
-  score           Float    @default(0)
-  passed          Boolean  @default(false)
-  answers         String   @default("[]")
-  completedAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@index([agentId])
-  @@index([section])
-}
-
-model Contract {
-  id              String   @id @default(cuid())
-  clientId        String
-  type            String
-  title           String
-  startDate       DateTime?
-  endDate         DateTime?
-  renewalDate     DateTime?
-  expirationDate  DateTime?
-  status          String   @default("Active")
-  content         String?
-  signedPdfUrl    String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@index([clientId])
-  @@index([status])
-}
-
-model Payment {
-  id              String   @id @default(cuid())
-  clientId        String
-  agentId         String?
-  amount          Float
-  method          String
-  type            String
-  status          String   @default("Pending")
-  dueDate         DateTime?
-  paidDate        DateTime?
-  description     String?
-  invoiceNumber   String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  agent           Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
-
-  @@index([clientId])
-  @@index([agentId])
-  @@index([status])
-}
-
-model PipelineStage {
-  id              String   @id @default(cuid())
-  agentId         String
-  stage           String
-  notes           String?
-  interviewer     String?
-  interviewDate   DateTime?
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@index([agentId])
-  @@index([stage])
-}
-
-model Placement {
-  id              String   @id @default(cuid())
-  agentId         String
-  clientId        String
-  requestId       String?
-  position        String
-  startDate       DateTime?
-  endDate         DateTime?
-  salary          Float?
-  commission      Float?
-  status          String   @default("Pending")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@index([agentId])
-  @@index([clientId])
-  @@index([status])
-}
-
-model StaffingRequest {
-  id              String   @id @default(cuid())
-  clientId        String
-  title           String
-  numberOfAgents  Int      @default(1)
-  languages       String   @default("[]")
-  experienceRequired Int   @default(0)
-  shift           String?
-  department      String?
-  salaryMin       Float?
-  salaryMax       Float?
-  startDate       DateTime?
-  specialRequirements String?
-  status          String   @default("Open")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@index([clientId])
-  @@index([status])
-}
-
-// ============================================================================
-// REVIEW MODEL — Trustpilot-style cross-role reviews
-//   • Only agents can review call centers (role === 'client')
-//   • Only call centers (clients) can review agents (role === 'agent')
-//   • One review per (reviewer, reviewee) pair — enforced by @@unique
-//   • POST /api/reviews  validates the role-pair before insert
-//   • GET  /api/reviews?revieweeId=...  returns aggregate + list
-// ============================================================================
-
-model Review {
-  id          String   @id @default(cuid())
-  reviewerId  String
-  revieweeId  String
-  rating      Int      // 1–5 stars
-  title       String?
-  comment     String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  reviewer    User     @relation("ReviewReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
-  reviewee    User     @relation("ReviewReviewee", fields: [revieweeId], references: [id], onDelete: Cascade)
-
-  @@unique([reviewerId, revieweeId])
-  @@index([revieweeId])
-  @@index([reviewerId])
-  @@index([rating])
-}
-
-// ─────────────────────────────────────────────────────────────
-// Group Chat — ONE PER (client, need/job). Agents are members.
-// Created lazily: on first hire for a need OR when the client opens the page.
-// The composite @@unique([clientId, needId]) guarantees at most one chat per
-// (client, need). needId is optional to allow a legacy "general" chat that
-// predates this scoping (NULLs are not treated as equal by SQLite, so multiple
-// NULL-needId rows are technically allowed, but the application layer always
-// sets needId on new chats).
-// ─────────────────────────────────────────────────────────────
-model GroupChat {
-  id          String   @id @default(cuid())
-  clientId    String   // owner = User.id of the client
-  needId      String?  // scope = CallCenterNeed.id (one chat per client+need)
-  title       String   @default("Team Chat")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  client      User             @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  need        CallCenterNeed?  @relation(fields: [needId], references: [id], onDelete: Cascade)
-  members     GroupChatMember[]
-  messages    GroupChatMessage[]
-
-  @@unique([clientId, needId])
-  @@index([clientId])
-  @@index([needId])
-}
-
-model GroupChatMember {
-  id            String   @id @default(cuid())
-  groupChatId   String
-  userId        String   // agent user id
-  addedById     String   // client user id who added them
-  addedAt       DateTime @default(now())
-
-  groupChat     GroupChat @relation(fields: [groupChatId], references: [id], onDelete: Cascade)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([groupChatId, userId])
-  @@index([userId])
-}
-
-model GroupChatMessage {
-  id            String   @id @default(cuid())
-  groupChatId   String
-  senderId      String
-  senderRole    String?
-  content       String
-  isRead        Boolean  @default(false)
-  createdAt     DateTime @default(now())
-
-  groupChat     GroupChat @relation(fields: [groupChatId], references: [id], onDelete: Cascade)
-  sender        User      @relation(fields: [senderId], references: [id], onDelete: Cascade)
-
-  @@index([groupChatId])
-  @@index([createdAt])
-}
-
-// ============================================================================
-// AI TRAINING USAGE — tracks how many training sessions a user has consumed.
-// Enforces 3 sessions per rolling 24-hour window per user.
-// A "session" = one scenario generation (Practice or Learn mode) OR
-// one Live AI Coach connection.
-// ============================================================================
-model AiTrainingUsage {
-  id        String   @id @default(cuid())
-  userId    String
-  createdAt DateTime @default(now())
-
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([createdAt])
-}
-
-// ============================================================================
-// MARKETPLACE — Products (headsets, routers, laptops) that agents and call
-// centers can browse and buy. Buying opens a 1:1 chat with the admin to
-// confirm the order (same pattern as the payment chat flow).
-// ============================================================================
-
-model Product {
-  id          String   @id @default(cuid())
-  name        String
-  description String
-  category    String   // 'headset' | 'router' | 'laptop' | 'other'
-  price       Float
-  currency    String   @default("USD")
-  image       String   // path like /products/jabra-headset-1.jpg
-  specs       String   @default("{}") // JSON: brand, model, IP location, RAM, etc.
-  isActive    Boolean  @default(true)
-  stock       Int      @default(-1) // -1 = unlimited
-  featured    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  orders      ProductOrder[]
-
-  @@index([category])
-  @@index([isActive])
-  @@index([featured])
-}
-
-model ProductOrder {
-  id             String   @id @default(cuid())
-  productId      String
-  buyerId        String
-  buyerRole      String
-  status         String   @default("pending") // pending | confirmed | shipped | delivered | cancelled
-  conversationId String?  // links to the 1:1 DM with admin
-  message        String   // pre-filled message sent to admin
-  quantity       Int      @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  buyer          User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
-
-  @@index([buyerId])
-  @@index([status])
-  @@index([productId])
 }

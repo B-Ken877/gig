@@ -1,67 +1,61 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Briefcase, MessageCircle, Clock, Building2, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import {
+  ClipboardList, AlertCircle, RefreshCw, MapPin, Clock, DollarSign,
+  CheckCircle2, XCircle, Eye, ArrowRight,
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useAppStore, authFetch } from '@/lib/store';
-import {
-  VerifiedBadge,
-  VerifiedBadgeStyles,
-  topVerificationTier,
-  type VerificationTier,
-} from '@/components/ui/verified-badge';
-import { UserProfileModal } from '@/components/ui/user-profile-modal';
+import { useAppStore } from '@/lib/store';
+import type { JobApplication } from '@/lib/types';
 
-interface Application {
-  notificationId: string;
-  agentId: string;
-  agentName: string;
-  agentEmail: string;
-  agentCountry: string;
-  agentLanguages: string[];
-  agentExperience: number;
-  agentSkills: string[];
-  agentStatus: string;
-  needId: string;
-  needTitle: string;
-  needDescription: string;
-  companyName: string;
-  clientId: string;
-  clientUserId?: string | null;
-  appliedAt: string;
-  // Call-center verification (added by /api/call-center-needs/interest GET)
-  clientTiers?: string[];
-  clientVerifiedAt?: string | null;
-}
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  applied: { label: 'Applied', color: 'text-blue-700', bg: 'bg-blue-100' },
+  reviewed: { label: 'Reviewed', color: 'text-amber-700', bg: 'bg-amber-100' },
+  hired: { label: 'Hired', color: 'text-green-700', bg: 'bg-green-100' },
+  rejected: { label: 'Not Selected', color: 'text-red-700', bg: 'bg-red-100' },
+};
 
 export default function AgentMyApplications() {
-  const { currentUser, navigateTo, addToast } = useAppStore();
-  const [applications, setApplications] = useState<Application[]>([]);
+  const { currentUser, navigateTo } = useAppStore();
+  const [applications, setApplications] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
-  const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadApplications = () => {
+  useEffect(() => {
     if (!currentUser) return;
-    setLoading(true);
-    setError(null);
-    authFetch('/api/call-center-needs/interest')
-      .then(r => {
-        if (!r.ok) throw new Error('Failed to load applications');
-        return r.json();
-      })
-      .then(data => {
-        if (data.applications) setApplications(data.applications);
-      })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  };
+    const headers = { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role };
 
-  useEffect(() => { loadApplications(); }, [currentUser]);
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Get agent record
+        const agentRes = await fetch('/api/agents?userId=' + currentUser.id, { headers });
+        const agentData = await agentRes.json();
+        const me = agentData.id ? agentData : (agentData.agents || []).find((a: any) => a.userId === currentUser.id);
+        if (!me) {
+          setLoading(false);
+          return;
+        }
+        const appsRes = await fetch('/api/job-applications?agentId=' + me.id, { headers });
+        const appsData = await appsRes.json();
+        setApplications(appsData.applications || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load applications');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [currentUser]);
 
   if (loading) {
-    return <div className="flex items-center justify-center py-16"><div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   if (error) {
@@ -71,7 +65,7 @@ export default function AgentMyApplications() {
           <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-3" />
           <p className="text-sm font-medium text-red-700 mb-1">Failed to load applications</p>
           <p className="text-xs text-red-500 mb-4">{error}</p>
-          <Button variant="outline" size="sm" onClick={loadApplications} className="border-red-300 text-red-600 hover:bg-red-100">
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />Try Again
           </Button>
         </CardContent>
@@ -81,104 +75,65 @@ export default function AgentMyApplications() {
 
   return (
     <div className="space-y-6">
-      <VerifiedBadgeStyles />
-      {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-green-50 flex items-center justify-center">
-            <Briefcase className="h-5 w-5 text-green-600" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">My Applications</h2>
-            <p className="text-xs text-gray-500">{applications.length} application{applications.length !== 1 ? 's' : ''} submitted</p>
-          </div>
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">My Applications</h2>
+          <p className="text-sm text-gray-500 mt-1">{applications.length} application{applications.length !== 1 ? 's' : ''} submitted</p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadApplications}>
-          <RefreshCw className="h-3.5 w-3.5 mr-1.5" />Refresh
+        <Button size="sm" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90" onClick={() => navigateTo('agent-dashboard' as never)}>
+          Browse More Jobs <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
         </Button>
       </div>
 
       {applications.length === 0 ? (
         <Card>
-          <CardContent className="py-16 text-center">
-            <Briefcase className="h-12 w-12 mx-auto text-gray-200 mb-3" />
-            <h3 className="text-sm font-semibold text-gray-500 mb-1">No Applications Yet</h3>
-            <p className="text-xs text-gray-400 max-w-sm mx-auto">When you apply to staffing needs from your dashboard, your applications will appear here.</p>
-            <Button size="sm" className="mt-4 bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
-              onClick={() => navigateTo('agent-dashboard')}>
-              Browse Staffing Needs
+          <CardContent className="py-12 text-center">
+            <ClipboardList className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm font-medium text-gray-700 mb-1">No applications yet</p>
+            <p className="text-xs text-gray-500 mb-4">Apply for jobs from your dashboard to see them here.</p>
+            <Button size="sm" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90" onClick={() => navigateTo('agent-dashboard' as never)}>
+              Browse Jobs
             </Button>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
           {applications.map(app => {
-            const clientTiers: VerificationTier[] = (app.clientTiers || []) as VerificationTier[];
-            const clientTopTier = topVerificationTier(clientTiers);
+            const status = STATUS_CONFIG[app.status] || STATUS_CONFIG.applied;
             return (
-            <Card key={app.notificationId} className="overflow-hidden hover:shadow-md transition-shadow">
-              <CardContent className="p-0">
-                <div className="flex flex-col lg:flex-row">
-                  {/* Application Info */}
-                  <div className="flex-1 p-5">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-base font-semibold text-gray-900">{app.needTitle}</h4>
-                      <Badge className="bg-green-100 text-green-700 text-[10px] flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" />Applied
-                      </Badge>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
-                      <span className="flex items-center gap-1.5">
-                        <Building2 className="h-3 w-3" />
-                        <button
-                          type="button"
-                          onClick={() => app.clientUserId && setProfileUserId(app.clientUserId)}
-                          className="text-[#16A34A] hover:underline cursor-pointer disabled:cursor-default disabled:text-inherit disabled:no-underline"
-                          title={app.clientUserId ? 'View full profile' : ''}
-                          disabled={!app.clientUserId}
-                        >
-                          {app.companyName || 'Call Center'}
-                        </button>
-                        {clientTopTier && (
-                          <VerifiedBadge tier={clientTopTier} size="xs" verifiedAt={app.clientVerifiedAt} />
+              <Card key={app.id}>
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <h3 className="text-base font-semibold text-gray-900">{app.jobPost?.jobTitle || 'Job Post'}</h3>
+                        <Badge variant="secondary" className={`text-[10px] uppercase ${status.bg} ${status.color}`}>{status.label}</Badge>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500 flex-wrap">
+                        {app.jobPost?.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{app.jobPost.location}</span>}
+                        {app.jobPost?.hourlyRate != null && app.jobPost.hourlyRate > 0 && (
+                          <span className="flex items-center gap-1 text-[#16A34A] font-semibold"><DollarSign className="h-3 w-3" />${app.jobPost.hourlyRate.toFixed(2)}</span>
                         )}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />Applied {new Date(app.appliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </span>
-                    </div>
-
-                    {app.needDescription && (
-                      <p className="text-xs text-gray-600 mt-2 line-clamp-2">{app.needDescription}</p>
-                    )}
-
-                    <div className="flex items-center gap-1 mt-3 text-[10px] text-gray-400">
-                      <CheckCircle2 className="h-3 w-3 text-green-500" />
-                      A pre-written message was sent to {app.companyName || 'the call center'}. Check your Messages for a response.
+                        {app.jobPost?.shift && <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{app.jobPost.shift}</span>}
+                        <span className="flex items-center gap-1"><Clock className="h-3 w-3" />Applied {new Date(app.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      {app.assessmentPassed && (
+                        <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-700 text-[10px] font-medium">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Assessment Passed ({app.assessmentScore?.toFixed(0)}%)
+                        </div>
+                      )}
+                      {app.coverMessage && (
+                        <p className="text-xs text-gray-600 mt-2 italic line-clamp-2">{app.coverMessage}</p>
+                      )}
                     </div>
                   </div>
-
-                  {/* Action */}
-                  <div className="lg:w-48 bg-gray-50 p-5 flex flex-col items-center justify-center gap-3 border-t lg:border-t-0 lg:border-l border-gray-100">
-                    <Button size="sm" className="w-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
-                      onClick={() => navigateTo('messages')}>
-                      <MessageCircle className="h-4 w-4 mr-2" />Messages
-                    </Button>
-                    <p className="text-[10px] text-gray-400 text-center">View your conversation</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
             );
           })}
         </div>
       )}
-      <UserProfileModal
-        userId={profileUserId}
-        open={!!profileUserId}
-        onClose={() => setProfileUserId(null)}
-      />
     </div>
   );
 }
