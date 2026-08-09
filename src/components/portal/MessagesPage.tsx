@@ -843,23 +843,27 @@ export default function MessagesPage() {
 
   const handleSendMessage = useCallback(async () => {
     const trimmed = inputValue.trim();
-    if (!trimmed || !activeConvId || sendingMessage) return;
+    if (!trimmed || sendingMessage) return;
 
     setSendingMessage(true);
 
     try {
+      const body: any = { content: trimmed };
+      if (activeConvId) {
+        body.conversationId = activeConvId;
+      }
+
       const res = await authFetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId: activeConvId,
-          content: trimmed,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (res.ok) {
         setInputValue('');
-        fetchMessages(activeConvId);
+        if (activeConvId) {
+          fetchMessages(activeConvId);
+        }
         fetchConversations();
       }
     } catch {
@@ -885,7 +889,7 @@ export default function MessagesPage() {
         return;
       }
 
-      // Create new conversation by sending a greeting
+      // Create new conversation by sending a greeting message
       authFetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -900,7 +904,7 @@ export default function MessagesPage() {
         })
         .then((data) => {
           if (data.conversationId) {
-            onNewMessageOpenChange?.(false);
+            setNewConvOpen(false);
             authFetch(`/api/messages?userId=${userId}`)
               .then((r) => r.json())
               .then((convData) => {
@@ -915,7 +919,9 @@ export default function MessagesPage() {
               .catch(() => {});
           }
         })
-        .catch(() => {});
+        .catch((err) => {
+          console.error('Failed to start conversation:', err);
+        });
     },
     [conversations, userId, handleSelectConversation],
   );
