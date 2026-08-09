@@ -62,6 +62,20 @@ export default function IdentityVerification() {
       .catch(() => {});
   }, [currentUser]);
 
+  // ─── Auto-start camera when entering a capture stage ─────────────────────
+  // This is the KEY fix. When capturePhoto advances to the next stage
+  // (e.g. capture_front → capture_back), this useEffect fires and starts
+  // the camera for the new stage. Without this, the camera was never started
+  // for the 2nd and 3rd photos.
+  useEffect(() => {
+    if (stage === 'capture_front' || stage === 'capture_back' || stage === 'capture_selfie') {
+      const which = stage === 'capture_front' ? 'front' : stage === 'capture_back' ? 'back' : 'selfie';
+      // Small delay to let the video element mount after AnimatePresence transition
+      const timer = setTimeout(() => { startCamera(which); }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [stage]);
+
   // Clean up camera on unmount
   useEffect(() => {
     return () => { stopCamera(); };
@@ -128,15 +142,17 @@ export default function IdentityVerification() {
         setPhotos(p => ({ ...p, selfie: url }));
       }
       stopCamera();
-      // Move to next stage
+      // Move to next stage — the useEffect will auto-start the camera
       if (capturing === 'front') {
+        setCapturing('back');
         setStage('capture_back');
       } else if (capturing === 'back') {
+        setCapturing('selfie');
         setStage('capture_selfie');
       } else if (capturing === 'selfie') {
+        setCapturing(null);
         setStage('submitting');
       }
-      setCapturing(null);
     }, 'image/jpeg', 0.85);
   };
 
@@ -145,8 +161,7 @@ export default function IdentityVerification() {
     if (which === 'front') setStage('capture_front');
     else if (which === 'back') setStage('capture_back');
     else setStage('capture_selfie');
-    // Wait for the stage to render the video element, then start the camera
-    setTimeout(() => { startCamera(which); }, 200);
+    // The useEffect above will auto-start the camera when the stage changes
   };
 
   const retake = (which: 'front' | 'back' | 'selfie') => {
