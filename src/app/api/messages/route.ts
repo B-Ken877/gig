@@ -60,6 +60,8 @@ export async function GET(req: NextRequest) {
       const unreadCount = c.user1Id === targetUserId ? c.unreadUser1 : c.unreadUser2;
       return {
         id: c.id,
+        user1Id: c.user1Id,
+        user2Id: c.user2Id,
         otherUser: other ? { id: other.id, name: other.name, email: other.email, role: other.role, avatar: other.avatar } : null,
         lastMessage: c.lastMessage,
         lastMessageAt: c.lastMessageAt?.toISOString() || null,
@@ -75,6 +77,7 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/messages — send a message to another user
+// Accepts both recipientId and recipientUserId for backward compatibility.
 export async function POST(req: NextRequest) {
   try {
     const auth = await getAuth(req);
@@ -82,14 +85,58 @@ export async function POST(req: NextRequest) {
     const { userId, role } = auth;
 
     const body = await req.json();
-    const { recipientId, content } = body;
-    if (!recipientId || !content) {
+    const { recipientId, recipientUserId, content, conversationId } = body;
+
+    // If conversationId is provided, send to existing conversation
+    if (conversationId && content) {
+      const conv = await db.conversation.findUnique({ where: { id: conversationId } });
+      if (!conv) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+      if (conv.user1Id !== userId && conv.user2Id !== userId) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      }
+
+      const message = await db.message.create({
+        data: { conversationId, senderId: userId, senderRole: role, content, isRead: false },
+      });
+
+      const isSenderUser1 = conv.user1Id === userId;
+      await db.conversation.update({
+        where: { id: conversationId },
+        data: {
+          lastMessage: content,
+          lastMessageAt: new Date(),
+          unreadUser1: isSenderUser1 ? conv.unreadUser1 : conv.unreadUser1 + 1,
+          unreadUser2: isSenderUser1 ? conv.unreadUser2 + 1 : conv.unreadUser2,
+        },
+      });
+
+      const recipientIdForNotif = conv.user1Id === userId ? conv.user2Id : conv.user1Id;
+      try {
+        await createNotification(recipientIdForNotif, {
+          title: 'New Message',
+          message: 'You have a new message',
+          type: 'message',
+        });
+      } catch (e) { console.error('[messages POST] notification failed:', e); }
+
+      return NextResponse.json({
+        message: {
+          id: message.id, conversationId: message.conversationId,
+          senderId: message.senderId, senderRole: message.senderRole,
+          content: message.content, createdAt: message.createdAt.toISOString(),
+        },
+        conversationId,
+      }, { status: 201 });
+    }
+
+    // New conversation — recipientId or recipientUserId
+    const recipient = recipientId || recipientUserId;
+    if (!recipient || !content) {
       return NextResponse.json({ error: 'recipientId and content are required' }, { status: 400 });
     }
 
-    const [user1Id, user2Id] = normalizePair(userId, recipientId);
+    const [user1Id, user2Id] = normalizePair(userId, recipient);
 
-    // Find or create the conversation
     let conversation = await db.conversation.findUnique({
       where: { user1Id_user2Id: { user1Id, user2Id } },
     });
@@ -98,18 +145,10 @@ export async function POST(req: NextRequest) {
       conversation = await db.conversation.create({ data: { user1Id, user2Id } });
     }
 
-    // Create the message
     const message = await db.message.create({
-      data: {
-        conversationId: conversation.id,
-        senderId: userId,
-        senderRole: role,
-        content,
-        isRead: false,
-      },
+      data: { conversationId: conversation.id, senderId: userId, senderRole: role, content, isRead: false },
     });
 
-    // Update conversation stats
     const isSenderUser1 = conversation.user1Id === userId;
     await db.conversation.update({
       where: { id: conversation.id },
@@ -121,26 +160,21 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Notify the recipient
     try {
-      await createNotification(recipientId, {
+      await createNotification(recipient, {
         title: 'New Message',
         message: 'You have a new message',
         type: 'message',
       });
-    } catch (e) {
-      console.error('[messages POST] notification failed:', e);
-    }
+    } catch (e) { console.error('[messages POST] notification failed:', e); }
 
     return NextResponse.json({
       message: {
-        id: message.id,
-        conversationId: message.conversationId,
-        senderId: message.senderId,
-        senderRole: message.senderRole,
-        content: message.content,
-        createdAt: message.createdAt.toISOString(),
+        id: message.id, conversationId: message.conversationId,
+        senderId: message.senderId, senderRole: message.senderRole,
+        content: message.content, createdAt: message.createdAt.toISOString(),
       },
+      conversationId: conversation.id,
     }, { status: 201 });
   } catch (error) {
     console.error('POST /api/messages error:', error);
