@@ -890,7 +890,7 @@ export default function MessagesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          recipientUserId,
+          recipientId: recipientUserId,
           content: 'Hello! I wanted to reach out.',
         }),
       })
@@ -900,6 +900,7 @@ export default function MessagesPage() {
         })
         .then((data) => {
           if (data.conversationId) {
+            onNewMessageOpenChange?.(false);
             authFetch(`/api/messages?userId=${userId}`)
               .then((r) => r.json())
               .then((convData) => {
