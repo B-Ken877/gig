@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
         await createNotification({
           userId: recipientIdForNotif,
           title: 'New Message',
-          message: JSON.stringify({ conversationId: conversation.id, senderId: userId }),
+          message: JSON.stringify({ conversationId: conversationId, senderId: userId }),
           type: 'message',
         });
       } catch (e) { console.error('[messages POST] notification failed:', e); }
@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
       await createNotification({
         userId: recipient,
         title: 'New Message',
-        message: JSON.stringify({ conversationId: conversation.id, senderId: userId }),
+        message: JSON.stringify({ conversationId: conversationId, senderId: userId }),
         type: 'message',
       });
     } catch (e) { console.error('[messages POST] notification failed:', e); }
