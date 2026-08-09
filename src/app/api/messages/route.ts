@@ -112,7 +112,8 @@ export async function POST(req: NextRequest) {
 
       const recipientIdForNotif = conv.user1Id === userId ? conv.user2Id : conv.user1Id;
       try {
-        await createNotification(recipientIdForNotif, {
+        await createNotification({
+          userId: recipientIdForNotif,
           title: 'New Message',
           message: JSON.stringify({ conversationId: conversation.id, senderId: userId }),
           type: 'message',
@@ -161,7 +162,8 @@ export async function POST(req: NextRequest) {
     });
 
     try {
-      await createNotification(recipient, {
+      await createNotification({
+        userId: recipient,
         title: 'New Message',
         message: JSON.stringify({ conversationId: conversation.id, senderId: userId }),
         type: 'message',
