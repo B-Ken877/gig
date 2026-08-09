@@ -125,12 +125,16 @@ export default function AdminVerifications() {
 
   const handleReject = async () => {
     if (!reviewUser?.agentId) return;
+    if (!rejectNotes.trim()) {
+      addToast({ title: 'Reason required', description: 'Please explain why the verification is being rejected. The agent needs to know what to fix.', variant: 'destructive' });
+      return;
+    }
     setReviewLoading(true);
     try {
       const res = await fetch(`/api/agents/verify-id/${reviewUser.agentId}`, {
         method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'rejected', notes: rejectNotes || 'Please retake your photos with better lighting.' }),
+        body: JSON.stringify({ status: 'rejected', notes: rejectNotes.trim() }),
       });
       if (res.ok) {
         addToast({ title: 'Verification rejected', description: `${reviewUser.name} has been notified.`, variant: 'success' });
@@ -265,14 +269,14 @@ export default function AdminVerifications() {
               {reviewUser.status === 'pending' && (
                 <>
                   <div className="space-y-2">
-                    <Label>Rejection notes (optional — shown to the agent if rejected)</Label>
-                    <Textarea value={rejectNotes} onChange={e => setRejectNotes(e.target.value)} rows={2} placeholder="e.g. The photo is blurry. Please retake with better lighting." />
+                    <Label>Reason for rejection <span className="text-red-500">*</span> <span className="text-xs font-normal text-gray-400">(required — shown to the agent)</span></Label>
+                    <Textarea value={rejectNotes} onChange={e => setRejectNotes(e.target.value)} rows={3} placeholder="e.g. The front photo is blurry and the text is not readable. Please retake with better lighting." />
                   </div>
                   <div className="flex gap-2">
                     <Button className="flex-1 bg-[#16A34A] text-white hover:bg-[#16A34A]/90" onClick={handleApprove} disabled={reviewLoading}>
                       <CheckCircle2 className="h-4 w-4 mr-2" /> Approve
                     </Button>
-                    <Button variant="outline" className="flex-1 text-red-600 border-red-300 hover:bg-red-50" onClick={handleReject} disabled={reviewLoading}>
+                    <Button variant="outline" className="flex-1 text-red-600 border-red-300 hover:bg-red-50" onClick={handleReject} disabled={reviewLoading || !rejectNotes.trim()}>
                       <XCircle className="h-4 w-4 mr-2" /> Reject
                     </Button>
                   </div>

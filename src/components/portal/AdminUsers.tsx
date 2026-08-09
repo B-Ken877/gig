@@ -157,12 +157,16 @@ export default function AdminUsers() {
 
   const handleReject = async () => {
     if (!reviewUser?.agentId) return;
+    if (!rejectNotes.trim()) {
+      addToast({ title: 'Reason required', description: 'Please explain why the verification is being rejected.', variant: 'destructive' });
+      return;
+    }
     setReviewLoading(true);
     try {
       const res = await fetch(`/api/agents/verify-id/${reviewUser.agentId}`, {
         method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'rejected', notes: rejectNotes || 'Please retake your photos with better lighting.' }),
+        body: JSON.stringify({ status: 'rejected', notes: rejectNotes.trim() }),
       });
       if (res.ok) {
         addToast({ title: 'Verification rejected', description: `${reviewUser.name} has been notified.`, variant: 'success' });

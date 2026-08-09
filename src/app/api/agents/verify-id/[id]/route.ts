@@ -19,6 +19,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!['verified', 'rejected'].includes(status)) {
       return NextResponse.json({ error: 'Invalid status. Use "verified" or "rejected".' }, { status: 400 });
     }
+    // Rejection requires a reason — the admin must explain why
+    if (status === 'rejected' && (!notes || !notes.trim())) {
+      return NextResponse.json({ error: 'Please provide a reason for the rejection. The agent needs to know why their verification was not approved.' }, { status: 400 });
+    }
 
     const agent = await db.agent.findUnique({
       where: { id },
@@ -48,8 +52,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       } else {
         await createNotification({
           userId: agent.user.id,
-          title: 'ID Verification Update',
-          message: `Your ID verification was not approved. ${notes || 'Please retake your photos with better lighting and make sure all text is clearly visible.'}`,
+          title: 'ID Verification Not Approved',
+          message: `Your ID verification was not approved. Reason: ${notes}. Please address this issue and submit your verification again.`,
           type: 'id_rejected',
         });
       }
