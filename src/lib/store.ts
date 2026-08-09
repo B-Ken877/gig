@@ -26,7 +26,7 @@ const VALID_PAGES: ReadonlySet<PageType> = new Set<PageType>([
   'login', 'register-agent', 'pending-payment',
   'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability', 'agent-applications', 'agent-my-work', 'agent-verify-id',
   'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
-  'admin-placements', 'admin-salary-dates',
+  'admin-placements', 'admin-salary-dates', 'admin-verifications',
   'messages', 'support', 'tickets',
 ]);
 
@@ -44,7 +44,7 @@ const ROLE_PAGE_MAP: Partial<Record<UserRole, ReadonlySet<PageType>>> = {
   ]),
   admin: new Set([
     'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
-    'admin-placements', 'admin-salary-dates',
+    'admin-placements', 'admin-salary-dates', 'admin-verifications',
     'academy', 'messages', 'tickets', 'support',
   ]),
 };

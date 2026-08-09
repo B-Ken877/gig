@@ -26,6 +26,7 @@ import AdminJobPosts from '@/components/portal/AdminJobPosts';
 import AdminProviders from '@/components/portal/AdminProviders';
 import AdminPlacements from '@/components/portal/AdminPlacements';
 import AdminSalaryDates from '@/components/portal/AdminSalaryDates';
+import AdminVerifications from '@/components/portal/AdminVerifications';
 import SupportPage from '@/components/portal/SupportPage';
 import TicketsPage from '@/components/portal/TicketsPage';
 import PendingPaymentPage from '@/components/portal/PendingPaymentPage';
@@ -40,7 +41,7 @@ const PORTAL_PAGES = new Set<PageType>([
   'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability',
   'agent-applications', 'agent-my-work', 'agent-verify-id',
   'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
-  'admin-placements', 'admin-salary-dates',
+  'admin-placements', 'admin-salary-dates', 'admin-verifications',
   'messages', 'support', 'tickets',
 ]);
 
@@ -169,6 +170,7 @@ export default function Home() {
             {currentPage === 'admin-providers' && <AdminProviders />}
             {currentPage === 'admin-placements' && <AdminPlacements />}
             {currentPage === 'admin-salary-dates' && <AdminSalaryDates />}
+            {currentPage === 'admin-verifications' && <AdminVerifications />}
             {currentPage === 'messages' && <MessagesPage />}
             {currentPage === 'academy' && <AcademyPage />}
             {currentPage === 'support' && <SupportPage />}

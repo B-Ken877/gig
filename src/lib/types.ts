@@ -7,7 +7,7 @@ export type PageType =
   | 'agent-verify-id'
   | 'agent-my-work'
   | 'admin-dashboard' | 'admin-users' | 'admin-job-posts' | 'admin-providers'
-  | 'admin-placements' | 'admin-salary-dates'
+  | 'admin-placements' | 'admin-salary-dates' | 'admin-verifications'
   | 'messages' | 'support' | 'tickets' | 'pending-payment';
 
 export type UserRole = 'visitor' | 'agent' | 'admin';

@@ -112,11 +112,13 @@ export async function POST(req: NextRequest) {
 
       const recipientIdForNotif = conv.user1Id === userId ? conv.user2Id : conv.user1Id;
       try {
+        const senderUser = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
         await createNotification({
           userId: recipientIdForNotif,
           title: 'New Message',
-          message: JSON.stringify({ conversationId: conversationId, senderId: userId }),
+          message: userId + '|You have a new message from ' + (senderUser?.name || 'someone'),
           type: 'message',
+          pushBody: 'You have a new message from ' + (senderUser?.name || 'someone'),
         });
       } catch (e) { console.error('[messages POST] notification failed:', e); }
 
@@ -162,11 +164,13 @@ export async function POST(req: NextRequest) {
     });
 
     try {
+      const senderUser2 = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
       await createNotification({
         userId: recipient,
         title: 'New Message',
-        message: JSON.stringify({ conversationId: conversation.id, senderId: userId }),
+        message: userId + '|You have a new message from ' + (senderUser2?.name || 'someone'),
         type: 'message',
+        pushBody: 'You have a new message from ' + (senderUser2?.name || 'someone'),
       });
     } catch (e) { console.error('[messages POST] notification failed:', e); }
 

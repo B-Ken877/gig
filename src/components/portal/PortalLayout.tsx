@@ -34,6 +34,7 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'Providers', page: 'admin-providers', icon: Network },
     { label: 'Applications', page: 'admin-placements', icon: Briefcase },
     { label: 'Salary Dates', page: 'admin-salary-dates', icon: CalendarClock },
+    { label: 'ID Verifications', page: 'admin-verifications', icon: ShieldCheck },
     { label: 'Users', page: 'admin-users', icon: Users },
     { label: 'Support Tickets', page: 'tickets', icon: Headphones },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
@@ -45,7 +46,7 @@ function getPageTitle(page: PageType): string {
     home: 'Home', services: 'Services', careers: 'Careers', about: 'About', contact: 'Contact', academy: 'Academy',
     'agent-dashboard': 'Dashboard', 'agent-profile': 'My Profile', 'agent-documents': 'Documents',
     'agent-availability': 'Availability', 'agent-applications': 'My Applications', 'agent-my-work': 'My Work', 'agent-verify-id': 'Identity Verification',
-    'admin-dashboard': 'Dashboard', 'admin-users': 'Users', 'admin-job-posts': 'Job Posts',
+    'admin-dashboard': 'Dashboard', 'admin-users': 'Users', 'admin-verifications': 'ID Verifications', 'admin-job-posts': 'Job Posts',
     'admin-providers': 'Providers', 'admin-placements': 'Applications',
     'admin-salary-dates': 'Salary Dates',
     'messages': 'Messages', 'support': 'Customer Support', 'tickets': 'Support Tickets',
@@ -108,13 +109,13 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     const targetPage = getNotificationPage(notif, role);
     // For message notifications, parse the conversationId and set pendingChatUserId
     if (notif.type === 'message') {
-      try {
-        const data = JSON.parse(notif.message);
-        if (data.senderId) {
-          useAppStore.getState().pendingChatUserId = data.senderId;
+      // Message format: "senderId|human readable text"
+      // We extract the senderId to auto-open the right conversation
+      if (notif.message.includes('|')) {
+        const senderId = notif.message.split('|')[0];
+        if (senderId && senderId.length > 10) {
+          useAppStore.getState().pendingChatUserId = senderId;
         }
-      } catch {
-        // If parse fails, just go to messages page
       }
     }
     // Navigate first so the user sees the page immediately.
@@ -217,7 +218,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
                     onClick={() => handleNotificationClick(n)}
                   >
                     <span className="text-sm font-medium">{n.title}</span>
-                    <span className="text-xs text-gray-500">{n.message}</span>
+                    <span className="text-xs text-gray-500">{n.type === 'message' && n.message.includes('|') ? n.message.split('|').slice(1).join('|') : n.message}</span>
                     <span className="text-[10px] text-gray-400 mt-0.5">{new Date(n.createdAt).toLocaleString()}</span>
                   </DropdownMenuItem>
                 ))}
