@@ -86,9 +86,7 @@ export default function CareersPage() {
     }
   };
 
-  // Share = always copy the specific job link to clipboard + show toast.
-  // We do NOT use navigator.share because some browsers share the page URL
-  // instead of the provided URL. Clipboard copy is reliable everywhere.
+  // Copy the specific job link to clipboard (for the Copy button).
   const copyJobLink = async (job: JobPost) => {
     const url = `${window.location.origin}/?job=${job.id}#careers`;
     try {
@@ -97,7 +95,6 @@ export default function CareersPage() {
       setTimeout(() => setCopiedId(null), 2000);
       return true;
     } catch {
-      // Fallback for older browsers
       const textarea = document.createElement('textarea');
       textarea.value = url;
       textarea.style.position = 'fixed';
@@ -114,6 +111,30 @@ export default function CareersPage() {
         document.body.removeChild(textarea);
         return false;
       }
+    }
+  };
+
+  // Share = open the native share sheet (WhatsApp, Telegram, email, etc.)
+  // Falls back to clipboard copy if the Web Share API is not available.
+  const shareJob = async (job: JobPost) => {
+    const url = `${window.location.origin}/?job=${job.id}#careers`;
+    const shareData = {
+      title: job.jobTitle + ' — Gig Solutions',
+      text: 'Check out this remote job: ' + job.jobTitle + ' at Gig Solutions',
+      url,
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback: copy to clipboard
+        await copyJobLink(job);
+      }
+    } catch (err) {
+      // User dismissed the share sheet — don't show an error
+      if (err instanceof Error && err.name === 'AbortError') return;
+      // Other errors — fallback to copy
+      await copyJobLink(job);
     }
   };
 
@@ -229,11 +250,11 @@ export default function CareersPage() {
                         )}
                       </div>
                       <button
-                        onClick={() => copyJobLink(job)}
+                        onClick={() => shareJob(job)}
                         className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-[#16A34A] transition-colors"
-                        title="Copy job link"
+                        title="Share job"
                       >
-                        {copiedId === job.id ? <CheckCircle className="h-4 w-4 text-[#16A34A]" /> : <Share2 className="h-4 w-4" />}
+                        <Share2 className="h-4 w-4" />
                       </button>
                     </div>
                     <h3 className="text-lg font-bold text-gray-900 leading-tight">{job.jobTitle}</h3>
@@ -373,9 +394,9 @@ export default function CareersPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => copyJobLink(selectedJob)}
+                  onClick={() => shareJob(selectedJob)}
                 >
-                  {copiedId === selectedJob.id ? <><CheckCircle className="h-4 w-4 mr-2 text-[#16A34A]" /> Copied</> : <><Share2 className="h-4 w-4 mr-2" /> Share Link</>}
+                  <Share2 className="h-4 w-4 mr-2" /> Share
                 </Button>
                 <Button
                   variant="ghost"

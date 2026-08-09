@@ -166,10 +166,11 @@ export default function AdminJobPosts() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Deactivate this job post?')) return;
+    if (!confirm('PERMANENTLY DELETE this job post? This cannot be undone. All applications and video responses for this job will also be deleted.')) return;
     try {
-      const res = await fetch(`/api/job-posts?id=${id}`, { method: 'DELETE', headers });
-      if (res.ok) { addToast({ title: 'Job post deactivated', variant: 'success' }); load(); }
+      const res = await fetch(`/api/job-posts?id=${id}&permanent=true`, { method: 'DELETE', headers });
+      if (res.ok) { addToast({ title: 'Job post deleted', variant: 'success' }); load(); }
+      else { const d = await res.json().catch(() => ({})); addToast({ title: 'Failed to delete', description: d.error || 'Unknown error', variant: 'destructive' }); }
     } catch { addToast({ title: 'Network error', variant: 'destructive' }); }
   };
 
@@ -194,12 +195,32 @@ export default function AdminJobPosts() {
 
   const handleShare = async (post: JobPost) => {
     const url = `${window.location.origin}/?job=${post.id}#careers`;
+    const shareData = {
+      title: post.jobTitle + ' — Gig Solutions',
+      text: 'Check out this remote job: ' + post.jobTitle + ' at Gig Solutions',
+      url,
+    };
     try {
-      await navigator.clipboard.writeText(url);
-      setCopiedId(post.id);
-      setTimeout(() => setCopiedId(null), 2000);
-      addToast({ title: 'Link copied!', description: 'Direct job link copied to clipboard.', variant: 'success' });
-    } catch { addToast({ title: 'Failed to copy', variant: 'destructive' }); }
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback: copy to clipboard
+        await navigator.clipboard.writeText(url);
+        setCopiedId(post.id);
+        setTimeout(() => setCopiedId(null), 2000);
+        addToast({ title: 'Link copied!', description: 'Share link copied to clipboard.', variant: 'success' });
+      }
+    } catch (err) {
+      // User cancelled the share sheet — don't show an error
+      if (err instanceof Error && err.name === 'AbortError') return;
+      // Other errors — fallback to copy
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopiedId(post.id);
+        setTimeout(() => setCopiedId(null), 2000);
+        addToast({ title: 'Link copied!', variant: 'success' });
+      } catch { addToast({ title: 'Failed to share', variant: 'destructive' }); }
+    }
   };
 
   const addSkill = () => {
