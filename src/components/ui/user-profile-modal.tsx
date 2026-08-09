@@ -55,7 +55,26 @@ export function UserProfileModal({ userId, open, onClose }: UserProfileModalProp
         if (!r.ok) throw new Error('Failed to load profile');
         return r.json();
       })
-      .then(data => setProfile(data.user || null))
+      .then(async data => {
+        let profileData = data.user || null;
+        // If the user is an agent, also fetch their agent profile
+        // (skills, languages, experience, country, etc.)
+        if (profileData && profileData.role === 'agent') {
+          try {
+            const agentRes = await authFetch('/api/agents?userId=' + userId);
+            if (agentRes.ok) {
+              const agentData = await agentRes.json();
+              const agent = agentData.id ? agentData : (agentData.agents || [])[0];
+              if (agent) {
+                profileData = { ...profileData, agent };
+              }
+            }
+          } catch (e) {
+            console.error('Failed to fetch agent profile:', e);
+          }
+        }
+        setProfile(profileData);
+      })
       .catch(() => setProfile(null))
       .finally(() => setLoading(false));
   }, [open, userId]);
