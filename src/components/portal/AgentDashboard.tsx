@@ -182,8 +182,7 @@ export default function AgentDashboard() {
 
   return (
     <div className="space-y-6">
-      <Card className="border-0 overflow-hidden shadow-2xl shadow-[#0B1A2E]/20">
-        <CardContent className="p-0">
+      <div className="relative rounded-xl overflow-hidden shadow-2xl shadow-[#0B1A2E]/20">
           <div className="relative bg-gradient-to-br from-[#0B1A2E] via-[#0d2240] to-[#0f2d52] px-6 py-6 text-white overflow-hidden">
             {/* Decorative gradient orbs */}
             <div className="absolute top-0 right-0 w-48 h-48 bg-[#16A34A]/15 rounded-full blur-3xl -mr-16 -mt-16" />
@@ -215,7 +214,11 @@ export default function AgentDashboard() {
                 {/* Greeting + info */}
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-medium text-[#4ADE80] uppercase tracking-wider mb-0.5">
-                    {new Date().getHours() < 12 ? 'Good Morning' : new Date().getHours() < 18 ? 'Good Afternoon' : 'Good Evening'}
+                    {(() => {
+                      const hour = new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+                      const h = parseInt(hour);
+                      return h < 12 ? 'Good Morning' : h < 18 ? 'Good Afternoon' : 'Good Evening';
+                    })()}
                   </p>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h2 className="text-2xl font-bold tracking-tight">{currentUser?.name?.split(' ')[0]}</h2>
@@ -256,8 +259,7 @@ export default function AgentDashboard() {
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+      </div>
 
       {/* ID Verification Popup Modal */}
       {showVerifyPopup && idVerificationStatus !== 'verified' && (

@@ -23,7 +23,6 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'My Applications', page: 'agent-applications', icon: ClipboardList },
     { label: 'Identity Verification', page: 'agent-verify-id', icon: ShieldCheck },
     { label: 'My Profile', page: 'agent-profile', icon: User },
-    { label: 'Documents', page: 'agent-documents', icon: FileText },
     { label: 'Availability', page: 'agent-availability', icon: Calendar },
     { label: 'Academy', page: 'academy', icon: GraduationCap },
     { label: 'Customer Support', page: 'support', icon: Headphones },
