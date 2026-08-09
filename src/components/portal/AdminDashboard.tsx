@@ -2,10 +2,11 @@
 import { useState, useEffect } from 'react';
 import {
   Briefcase, Users, ClipboardList, DollarSign, ArrowRight, TrendingUp,
-  AlertCircle, RefreshCw, CheckCircle2, Clock, Network, CalendarClock,
+  AlertCircle, RefreshCw, CheckCircle2, Clock, Network, CalendarClock, ShieldCheck,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
 
