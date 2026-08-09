@@ -215,7 +215,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
                   <DropdownMenuItem
                     key={n.id}
                     className="flex flex-col items-start py-2 cursor-pointer hover:bg-gray-50"
-                    onClick={() => handleNotificationClick(n)}
+                    onSelect={(e) => { e.preventDefault(); handleNotificationClick(n); }}
                   >
                     <span className="text-sm font-medium">{n.title}</span>
                     <span className="text-xs text-gray-500">{n.type === 'message' && n.message.includes('|') ? n.message.split('|').slice(1).join('|') : n.message}</span>
