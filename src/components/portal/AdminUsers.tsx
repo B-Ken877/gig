@@ -18,6 +18,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { useAppStore } from '@/lib/store';
+import { UserProfileModal } from '@/components/ui/user-profile-modal';
 
 interface AdminUserRow {
   id: string; email: string; name: string; role: string;
@@ -51,6 +52,7 @@ export default function AdminUsers() {
   const [reviewData, setReviewData] = useState<{ front: string; back: string; selfie: string; type: string } | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [rejectNotes, setRejectNotes] = useState('');
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
   const headers = currentUser
     ? { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role }
@@ -207,15 +209,17 @@ export default function AdminUsers() {
                 const VIcon = vc.icon;
                 return (
                   <div key={u.id} className="flex items-center gap-3 p-4 hover:bg-gray-50">
-                    <Avatar className="h-10 w-10">
-                      {u.avatar && <AvatarImage src={u.avatar} alt={u.name} />}
-                      <AvatarFallback className="bg-[#16A34A] text-white text-xs font-bold">
-                        {u.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
+                    <button onClick={() => setProfileUserId(u.id)} className="cursor-pointer rounded-full">
+                      <Avatar className="h-10 w-10">
+                        {u.avatar && <AvatarImage src={u.avatar} alt={u.name} />}
+                        <AvatarFallback className="bg-[#16A34A] text-white text-xs font-bold">
+                          {u.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                    </button>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-semibold text-gray-900 truncate">{u.name}</p>
+                        <button onClick={() => setProfileUserId(u.id)} className="text-sm font-semibold text-gray-900 truncate hover:text-[#16A34A] hover:underline cursor-pointer">{u.name}</button>
                         <Badge variant="secondary" className={`text-[10px] uppercase ${ROLE_COLORS[u.role] || 'bg-gray-100'}`}>{u.role}</Badge>
                         <Badge variant="secondary" className={`text-[10px] uppercase ${vc.bg} ${vc.color}`}>
                           <VIcon className="h-3 w-3 mr-0.5" /> {vc.label}
@@ -326,6 +330,11 @@ export default function AdminUsers() {
           )}
         </DialogContent>
       </Dialog>
+      <UserProfileModal
+        userId={profileUserId}
+        open={!!profileUserId}
+        onClose={() => setProfileUserId(null)}
+      />
     </div>
   );
 }

@@ -106,6 +106,17 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const handleNotificationClick = async (notif: Notification) => {
     if (!currentUser) return;
     const targetPage = getNotificationPage(notif, role);
+    // For message notifications, parse the conversationId and set pendingChatUserId
+    if (notif.type === 'message') {
+      try {
+        const data = JSON.parse(notif.message);
+        if (data.senderId) {
+          useAppStore.getState().pendingChatUserId = data.senderId;
+        }
+      } catch {
+        // If parse fails, just go to messages page
+      }
+    }
     // Navigate first so the user sees the page immediately.
     navigateTo(targetPage);
     // Then delete the notification from the DB + local state.

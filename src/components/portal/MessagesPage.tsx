@@ -535,14 +535,9 @@ function MessageBubble({ message, isOwn, otherUser, onShowProfile }: MessageBubb
       >
         {!isOwn && (
           <div className="mb-1 flex items-center gap-1.5 px-1">
-            <button
-              type="button"
-              onClick={() => onShowProfile?.((otherUser as any).id)}
-              className="text-xs font-medium text-gray-500 hover:text-[#16A34A] hover:underline cursor-pointer"
-              title="View full profile"
-            >
+            <span className="text-xs font-medium text-gray-500">
               {otherUser.name}
-            </button>
+            </span>
             <Badge className={cn('text-[10px] px-1.5 py-0 h-3.5 font-medium leading-none', ROLE_COLORS[otherUser.role] || 'bg-gray-100 text-gray-600')}>
               {ROLE_LABELS[otherUser.role] || otherUser.role}
             </Badge>
@@ -637,17 +632,14 @@ function ConversationItem({
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onShowProfile?.((otherUser as any).id); }}
+            <span
               className={cn(
-                'truncate text-sm font-semibold hover:underline cursor-pointer',
-                isActive ? 'text-green-900 hover:text-green-700' : 'text-gray-900 hover:text-[#16A34A]',
+                'truncate text-sm font-semibold',
+                isActive ? 'text-green-900' : 'text-gray-900',
               )}
-              title="View full profile"
             >
               {otherUser.name}
-            </button>
+            </span>
             <RoleIcon className={cn('h-3 w-3 shrink-0', isActive ? 'text-green-600' : 'text-gray-400')} />
           </div>
           {lastMessageAt && (
@@ -715,6 +707,7 @@ export default function MessagesPage() {
 
   // ── Profile modal target (click name/avatar → full profile) ──
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
+  const [pendingConvId, setPendingConvId] = useState<string | null>(null);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -822,6 +815,22 @@ export default function MessagesPage() {
     setActiveOtherUser(conv.otherUser);
     setMessages([]);
     setMobileShowChat(true);
+    // Fetch messages for this conversation
+    authFetch(`/api/messages?conversationId=${conv.id}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.messages) setMessages(data.messages);
+      })
+      .catch(() => {});
+    // Mark conversation as read (clears the unread badge)
+    authFetch('/api/messages', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: conv.id }),
+    }).then(() => {
+      // Update local unread count to 0
+      setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
+    }).catch(() => {});
   }, []);
 
   // Auto-select conversation when navigating from View Application
