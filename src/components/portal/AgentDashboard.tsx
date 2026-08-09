@@ -195,8 +195,7 @@ export default function AgentDashboard() {
               <div className="flex items-center gap-4 min-w-0">
                 {/* Avatar with gradient ring */}
                 <div className="relative shrink-0">
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#16A34A] to-[#22C55E] rounded-full blur-md opacity-50" />
-                  <Avatar className="relative h-16 w-16 ring-2 ring-white/20 shadow-2xl">
+                  <Avatar className="relative h-16 w-16 ring-2 ring-[#16A34A]/40 shadow-2xl">
                     {currentUser?.avatar && <AvatarImage src={currentUser.avatar} alt={currentUser?.name || 'User'} />}
                     <AvatarFallback className="bg-gradient-to-br from-[#16A34A] to-[#0F7B35] text-white text-xl font-bold">
                       {(currentUser?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
