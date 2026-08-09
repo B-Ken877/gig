@@ -588,7 +588,7 @@ function ConversationItem({
   onClick,
   onShowProfile,
 }: ConversationItemProps) {
-  const { otherUser, latestMessage, unreadCount, lastMessageAt } = conversation;
+  const { otherUser, lastMessage, unreadCount, lastMessageAt } = conversation;
   const RoleIcon = ROLE_ICONS[otherUser.role] || Users;
   const otherTiers: VerificationTier[] = (otherUser.verificationTiers || []) as VerificationTier[];
   const otherTopTier = topVerificationTier(otherTiers);
@@ -656,10 +656,10 @@ function ConversationItem({
 
         <div className="flex items-center justify-between gap-2">
           <p className="truncate text-xs text-gray-500">
-            {latestMessage
-              ? latestMessage.content.length > 42
-                ? latestMessage.content.substring(0, 42) + '...'
-                : latestMessage.content
+            {lastMessage
+              ? lastMessage.length > 42
+                ? lastMessage.substring(0, 42) + '...'
+                : lastMessage
               : 'No messages yet'}
           </p>
           {unreadCount > 0 && (
@@ -814,14 +814,17 @@ export default function MessagesPage() {
     setActiveConvId(conv.id);
     setActiveOtherUser(conv.otherUser);
     setMessages([]);
+    setMessagesLoading(true);
     setMobileShowChat(true);
     // Fetch messages for this conversation
     authFetch(`/api/messages?conversationId=${conv.id}`)
       .then(r => r.json())
       .then(data => {
         if (data.messages) setMessages(data.messages);
+        else setMessages([]);
       })
-      .catch(() => {});
+      .catch(() => setMessages([]))
+      .finally(() => setMessagesLoading(false));
     // Mark conversation as read (clears the unread badge)
     authFetch('/api/messages', {
       method: 'PATCH',
