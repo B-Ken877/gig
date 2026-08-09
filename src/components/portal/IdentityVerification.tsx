@@ -171,7 +171,7 @@ export default function IdentityVerification() {
 
   const handleSubmit = async () => {
     if (!photos.front || !photos.back || !photos.selfie || !currentUser) return;
-    setStage('submitting');
+    setStage('uploading');
     setError(null);
 
     try {
@@ -212,7 +212,7 @@ export default function IdentityVerification() {
     } catch (err) {
       console.error('Submit failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to submit. Please try again.');
-      setStage('capture_selfie');
+      setStage('submitting');
     }
   };
 
@@ -468,6 +468,19 @@ export default function IdentityVerification() {
                     <Upload className="h-4 w-4 mr-2" /> Submit Verification
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* ─── UPLOADING ─── */}
+        {stage === 'uploading' && (
+          <motion.div key="uploading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Loader2 className="h-10 w-10 animate-spin text-[#16A34A] mx-auto mb-4" />
+                <h3 className="text-lg font-bold text-gray-900 mb-1">Uploading...</h3>
+                <p className="text-sm text-gray-500">Submitting your verification photos. Please don&apos;t close this page.</p>
               </CardContent>
             </Card>
           </motion.div>
