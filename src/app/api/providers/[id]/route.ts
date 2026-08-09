@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuth } from '@/lib/auth-middleware';
 
-// PATCH /api/providers/[id] — admin only. Update provider fields.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const auth = await getAuth(req);
@@ -13,7 +12,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const body = await req.json();
     const data: Record<string, unknown> = {};
     if (body.name !== undefined) data.name = body.name;
-    if (body.contactPerson !== undefined) data.contactPerson = body.contactPerson || null;
     if (body.phone !== undefined) data.phone = body.phone || null;
     if (body.email !== undefined) data.email = body.email || null;
     if (body.notes !== undefined) data.notes = body.notes || null;
@@ -26,7 +24,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-// DELETE /api/providers/[id] — admin only. Delete provider.
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const auth = await getAuth(req);

@@ -1,14 +1,11 @@
-// Types aligned with the new Gig Solutions philosophy (admin-posted jobs,
-// per-job assessments, providers hidden from public).
+// Types aligned with the new Gig Solutions philosophy (video assessments).
 
 export type PageType =
-  // Public
   | 'home' | 'services' | 'careers' | 'about' | 'contact' | 'academy'
   | 'login' | 'register-agent'
-  // Agent portal
   | 'agent-dashboard' | 'agent-profile' | 'agent-documents' | 'agent-availability' | 'agent-applications'
+  | 'agent-verify-id'
   | 'agent-my-work'
-  // Admin portal (admin = merged admin + payment_taker)
   | 'admin-dashboard' | 'admin-users' | 'admin-job-posts' | 'admin-providers'
   | 'admin-placements' | 'admin-salary-dates'
   | 'messages' | 'support' | 'tickets' | 'pending-payment';
@@ -38,10 +35,8 @@ export interface Agent {
   availabilitySlots?: AvailabilitySlot[];
 }
 
-// Internal-only. Never exposed to the public site.
 export interface Provider {
-  id: string; name: string; contactPerson?: string;
-  phone?: string; email?: string; notes?: string;
+  id: string; name: string; phone?: string; email?: string; notes?: string;
   createdAt: string; updatedAt: string;
   _count?: { jobPosts: number };
 }
@@ -59,25 +54,35 @@ export interface JobPost {
   location?: string;
   providerId?: string;
   commission: number;
+  assessmentQuestions: string[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
-  provider?: Provider | null;
   _count?: { applications: number; placements: number };
+}
+
+export interface VideoResponse {
+  id: string;
+  applicationId: string;
+  questionIndex: number;
+  questionText: string;
+  videoUrl: string;
+  durationSeconds?: number;
+  createdAt: string;
 }
 
 export interface JobApplication {
   id: string;
   agentId: string;
   jobPostId: string;
-  status: 'applied' | 'reviewed' | 'hired' | 'rejected';
+  status: 'applied' | 'hired' | 'rejected';
   coverMessage?: string;
-  assessmentScore?: number;
-  assessmentPassed: boolean;
   createdAt: string;
   updatedAt: string;
   jobPost?: JobPost;
   agent?: Agent;
+  videoResponses?: VideoResponse[];
+  videoCount?: number;
 }
 
 export interface Placement {
@@ -102,21 +107,6 @@ export interface SalaryDate {
   payDate: string;
   frequency: string;
   description?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Assessment {
-  id: string;
-  agentId: string;
-  jobPostId?: string;
-  section: string;
-  totalQuestions: number;
-  correctAnswers: number;
-  score: number;
-  passed: boolean;
-  answers: any[];
-  completedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -159,9 +149,4 @@ export interface AvailabilitySlot {
 export interface ToastMessage {
   id: string; title?: string; description?: string;
   variant?: 'default' | 'destructive' | 'success';
-}
-
-export interface DashboardStat {
-  label: string; value: string | number; change?: string;
-  icon?: string; trend?: 'up' | 'down' | 'neutral';
 }

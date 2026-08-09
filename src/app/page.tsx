@@ -16,6 +16,7 @@ import RegisterAgentPage from '@/components/public/RegisterAgentPage';
 import AgentDashboard from '@/components/portal/AgentDashboard';
 import AgentMyApplications from '@/components/portal/AgentMyApplications';
 import AgentMyWork from '@/components/portal/AgentMyWork';
+import IdentityVerification from '@/components/portal/IdentityVerification';
 import AgentProfile from '@/components/portal/AgentProfile';
 import AgentDocuments from '@/components/portal/AgentDocuments';
 import AgentAvailability from '@/components/portal/AgentAvailability';
@@ -37,7 +38,7 @@ import { ShieldAlert, LogIn } from 'lucide-react';
 
 const PORTAL_PAGES = new Set<PageType>([
   'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability',
-  'agent-applications', 'agent-my-work',
+  'agent-applications', 'agent-my-work', 'agent-verify-id',
   'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
   'admin-placements', 'admin-salary-dates',
   'messages', 'support', 'tickets',
@@ -161,6 +162,7 @@ export default function Home() {
             {currentPage === 'agent-availability' && <AgentAvailability />}
             {currentPage === 'agent-applications' && <AgentMyApplications />}
             {currentPage === 'agent-my-work' && <AgentMyWork />}
+            {currentPage === 'agent-verify-id' && <IdentityVerification />}
             {currentPage === 'admin-dashboard' && <AdminDashboard />}
             {currentPage === 'admin-users' && <AdminUsers />}
             {currentPage === 'admin-job-posts' && <AdminJobPosts />}

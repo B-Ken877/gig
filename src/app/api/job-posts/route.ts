@@ -3,21 +3,17 @@ import { db } from '@/lib/db';
 import { getAuth } from '@/lib/auth-middleware';
 import { createNotificationBulk } from '@/lib/notifications';
 
-// GET /api/job-posts
-// Public — anyone (including logged-out visitors on the career page) can list
-// active jobs. Provider info and commission are NEVER returned to the public.
-// Admins can pass ?all=1 to include inactive jobs, and get commission/provider.
+// GET /api/job-posts — public (active jobs only). Admin can pass ?all=1.
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const includeInactive = searchParams.get('all') === '1';
 
-    // If admin asks for all, we also expose commission + providerId (admin-only fields)
     let isAdmin = false;
     try {
       const auth = await getAuth(req);
       if (!('error' in auth) && auth.role === 'admin') isAdmin = true;
-    } catch { /* not authenticated — public request */ }
+    } catch { /* public */ }
 
     const posts = await db.jobPost.findMany({
       where: includeInactive && isAdmin ? {} : { isActive: true },
@@ -37,12 +33,12 @@ export async function GET(req: NextRequest) {
         category: p.category,
         shift: p.shift,
         location: p.location,
+        assessmentQuestions: JSON.parse(p.assessmentQuestions || '[]'),
         isActive: p.isActive,
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
         _count: p._count,
       };
-      // Admin-only fields — NEVER exposed to the public
       if (isAdmin) {
         base.commission = p.commission;
         base.providerId = p.providerId;
@@ -57,28 +53,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// GET single job by id — used by the shareable career page URL.
-export async function GET_ONE(id: string) {
-  const post = await db.jobPost.findUnique({ where: { id } });
-  if (!post || !post.isActive) return null;
-  return {
-    id: post.id,
-    jobTitle: post.jobTitle,
-    description: post.description,
-    skills: JSON.parse(post.skills || '[]'),
-    requirements: JSON.parse(post.requirements || '[]'),
-    hourlyRate: post.hourlyRate,
-    payFrequency: post.payFrequency,
-    category: post.category,
-    shift: post.shift,
-    location: post.location,
-    createdAt: post.createdAt.toISOString(),
-    updatedAt: post.updatedAt.toISOString(),
-  };
-}
-
-// POST /api/job-posts — admin only. Creates a new job.
-// Provider info + commission are stored internally but never exposed publicly.
+// POST /api/job-posts — admin only.
 export async function POST(req: NextRequest) {
   try {
     const auth = await getAuth(req);
@@ -89,11 +64,17 @@ export async function POST(req: NextRequest) {
     const {
       jobTitle, description, skills, requirements,
       hourlyRate, payFrequency, category, shift, location,
-      providerId, commission,
+      providerId, commission, assessmentQuestions,
     } = body;
 
     if (!jobTitle || !description) {
       return NextResponse.json({ error: 'Job title and description are required' }, { status: 400 });
+    }
+
+    // Validate assessment questions — must be exactly 5 non-empty strings.
+    const questions = Array.isArray(assessmentQuestions) ? assessmentQuestions.filter((q: string) => q && q.trim()) : [];
+    if (questions.length !== 5) {
+      return NextResponse.json({ error: 'Exactly 5 assessment questions are required' }, { status: 400 });
     }
 
     const post = await db.jobPost.create({
@@ -109,11 +90,11 @@ export async function POST(req: NextRequest) {
         location: location || 'Remote',
         providerId: providerId || null,
         commission: Number(commission) || 0,
+        assessmentQuestions: JSON.stringify(questions),
         isActive: true,
       },
     });
 
-    // Notify all active agents about the new job post.
     try {
       const agents = await db.user.findMany({
         where: { role: 'agent', isActive: true },
@@ -124,8 +105,6 @@ export async function POST(req: NextRequest) {
           title: 'New Job Posted',
           message: 'A new job "' + jobTitle + '" is now available. Apply from your dashboard.',
           type: 'job_post',
-          pushBody: 'New job: ' + jobTitle,
-          pushUrl: 'https://167.86.124.101:4001/#agent-dashboard',
         });
       }
     } catch (notifErr) {
@@ -136,18 +115,9 @@ export async function POST(req: NextRequest) {
       jobPost: {
         id: post.id,
         jobTitle: post.jobTitle,
-        description: post.description,
-        skills: JSON.parse(post.skills || '[]'),
-        requirements: JSON.parse(post.requirements || '[]'),
-        hourlyRate: post.hourlyRate,
-        payFrequency: post.payFrequency,
-        category: post.category,
-        shift: post.shift,
-        location: post.location,
-        commission: post.commission,
+        assessmentQuestions: JSON.parse(post.assessmentQuestions || '[]'),
         isActive: post.isActive,
         createdAt: post.createdAt.toISOString(),
-        updatedAt: post.updatedAt.toISOString(),
       },
     }, { status: 201 });
   } catch (error) {
@@ -156,7 +126,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/job-posts?id=... — admin only. Toggle active / edit fields.
+// PATCH /api/job-posts?id=... — admin only.
 export async function PATCH(req: NextRequest) {
   try {
     const auth = await getAuth(req);
@@ -180,6 +150,13 @@ export async function PATCH(req: NextRequest) {
     if (body.location !== undefined) data.location = body.location;
     if (body.providerId !== undefined) data.providerId = body.providerId || null;
     if (body.commission !== undefined) data.commission = Number(body.commission) || 0;
+    if (body.assessmentQuestions !== undefined) {
+      const qs = Array.isArray(body.assessmentQuestions) ? body.assessmentQuestions.filter((q: string) => q && q.trim()) : [];
+      if (qs.length !== 5) {
+        return NextResponse.json({ error: 'Exactly 5 assessment questions are required' }, { status: 400 });
+      }
+      data.assessmentQuestions = JSON.stringify(qs);
+    }
     if (body.isActive !== undefined) data.isActive = !!body.isActive;
 
     const updated = await db.jobPost.update({ where: { id }, data });
@@ -190,7 +167,7 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-// DELETE /api/job-posts?id=... — admin only. Soft-delete (deactivate).
+// DELETE /api/job-posts?id=... — admin only.
 export async function DELETE(req: NextRequest) {
   try {
     const auth = await getAuth(req);

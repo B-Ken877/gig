@@ -7,12 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================================
-// USER — only admin and agent roles exist in the new philosophy.
-// (Legacy 'client' and 'payment_taker' rows are kept for backward compat
-//  but no new ones can be created through the UI.)
-// ============================================================================
-
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
@@ -59,6 +53,18 @@ model Agent {
   preferredShift  String?
   salaryExpectation Float?
   niu             String?
+  // ─── Identity Verification ────────────────────────────────────────────
+  // Status: 'unverified' | 'pending' | 'verified' | 'rejected'
+  // type:   'id_card' | 'drivers_license'
+  idVerificationStatus String  @default("unverified")
+  idVerificationType   String?
+  idFrontPhotoUrl      String?
+  idBackPhotoUrl       String?
+  idSelfiePhotoUrl     String?
+  idVerificationSubmittedAt DateTime?
+  idVerificationReviewedAt  DateTime?
+  idVerificationReviewedBy  String?
+  idVerificationNotes       String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -66,53 +72,40 @@ model Agent {
   documents       Document[]
   availabilitySlots AvailabilitySlot[]
   notes           InternalNote[]
-  assessments     Assessment[]
   placements      Placement[]
   jobApplications JobApplication[]
+  videoResponses  VideoResponse[]
 
   @@index([status])
   @@index([country])
 }
 
-// ============================================================================
-// PROVIDER — internal-only. The public never sees this. The admin records
-// which third-party gave us a job to post, plus the commission we earn.
-// ============================================================================
-
 model Provider {
   id              String   @id @default(cuid())
   name            String
-  contactPerson   String?
   phone           String?
   email           String?
   notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   jobPosts        JobPost[]
-
   @@index([name])
 }
-
-// ============================================================================
-// JOB POST — posted by the admin only. The admin assigns it to a Provider
-// (internal record) and sets a commission. The public career page only sees
-// the jobTitle, description, skills, hourlyRate, etc. — never the provider.
-// ============================================================================
 
 model JobPost {
   id              String   @id @default(cuid())
   jobTitle        String
   description     String
-  skills          String   @default("[]")     // JSON array of strings
-  requirements    String   @default("[]")     // JSON array of strings
+  skills          String   @default("[]")
+  requirements    String   @default("[]")
   hourlyRate      Float    @default(0)
-  payFrequency    String   @default("bi-weekly") // hourly | weekly | bi-weekly | monthly
+  payFrequency    String   @default("bi-weekly")
   category        String?
   shift           String?
   location        String?  @default("Remote")
   providerId      String?
   commission      Float    @default(0)
+  assessmentQuestions String @default("[]")
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -120,31 +113,25 @@ model JobPost {
   provider        Provider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
   applications    JobApplication[]
   placements      Placement[]
+  salaryDates     SalaryDate[]
 
   @@index([isActive])
   @@index([providerId])
   @@index([category])
 }
 
-// ============================================================================
-// JOB APPLICATION — an agent applies for a JobPost. Before the application
-// is created, the agent MUST pass a per-job Assessment. The unique constraint
-// prevents duplicate applications for the same job.
-// ============================================================================
-
 model JobApplication {
   id              String   @id @default(cuid())
   agentId         String
   jobPostId       String
-  status          String   @default("applied") // applied | reviewed | hired | rejected
+  status          String   @default("applied")
   coverMessage    String?
-  assessmentScore Float?
-  assessmentPassed Boolean @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   jobPost         JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  videoResponses  VideoResponse[]
 
   @@unique([agentId, jobPostId])
   @@index([agentId])
@@ -152,11 +139,24 @@ model JobApplication {
   @@index([status])
 }
 
-// ============================================================================
-// PLACEMENT — when an agent is hired for a JobPost. This drives the agent's
-// "My Work" view and the admin's placement management table. The salary and
-// next salary date are defined by the admin.
-// ============================================================================
+model VideoResponse {
+  id              String   @id @default(cuid())
+  applicationId   String
+  agentId         String
+  jobPostId       String
+  questionIndex   Int
+  questionText    String
+  videoUrl        String
+  durationSeconds Float?
+  createdAt       DateTime @default(now())
+
+  application     JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([agentId])
+  @@index([jobPostId])
+}
 
 model Placement {
   id              String   @id @default(cuid())
@@ -167,7 +167,7 @@ model Placement {
   endDate         DateTime?
   salary          Float?
   nextSalaryDate  DateTime?
-  status          String   @default("active") // active | completed | terminated
+  status          String   @default("active")
   notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -180,47 +180,21 @@ model Placement {
   @@index([status])
 }
 
-// ============================================================================
-// SALARY DATE — admin-defined pay schedule. Shown on agent dashboard so they
-// know when the next payday is. Global (not per-job) for simplicity; the
-// admin can mark which pay cycle each one belongs to via description.
-// ============================================================================
-
+// SALARY DATE — per-job. Each salary date belongs to a specific job post.
+// Agents only see salary dates for jobs they have active placements on.
 model SalaryDate {
   id              String   @id @default(cuid())
+  jobPostId       String
   payDate         DateTime
   frequency       String   @default("bi-weekly")
   description     String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  @@index([payDate])
-}
+  jobPost         JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
 
-// ============================================================================
-// ASSESSMENT — per-job. Created when an agent starts the assessment for a
-// specific JobPost. Passed assessments unlock the apply button.
-// ============================================================================
-
-model Assessment {
-  id              String   @id @default(cuid())
-  agentId         String
-  jobPostId       String?
-  section         String   @default("general")
-  totalQuestions  Int      @default(0)
-  correctAnswers  Int      @default(0)
-  score           Float    @default(0)
-  passed          Boolean  @default(false)
-  answers         String   @default("[]")
-  completedAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@index([agentId])
   @@index([jobPostId])
-  @@index([section])
+  @@index([payDate])
 }
 
 model Document {
@@ -235,9 +209,7 @@ model Document {
   downloadCount   Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
   @@index([agentId])
   @@index([type])
 }
@@ -252,9 +224,7 @@ model Notification {
   isRead          Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId])
   @@index([isRead])
 }
@@ -267,7 +237,6 @@ model InternalNote {
   content         String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   agent           Agent?   @relation(fields: [agentId], references: [id])
 }
 
@@ -281,7 +250,6 @@ model AuditLog {
   ipAddress       String?
   createdAt       DateTime @default(now())
   user            User?    @relation(fields: [userId], references: [id])
-
   @@index([userId])
   @@index([action])
 }
@@ -295,7 +263,6 @@ model AvailabilitySlot {
   isAvailable     Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
 }
 
@@ -309,11 +276,9 @@ model Conversation {
   unreadUser2     Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   user1           User     @relation("ConvUser1", fields: [user1Id], references: [id], onDelete: Cascade)
   user2           User     @relation("ConvUser2", fields: [user2Id], references: [id], onDelete: Cascade)
   messages        Message[]
-
   @@unique([user1Id, user2Id])
 }
 
@@ -326,9 +291,7 @@ model Message {
   isRead          Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
   @@index([conversationId])
   @@index([senderId])
   @@index([isRead])
@@ -340,9 +303,7 @@ model PushSubscription {
   endpoint  String
   keys      String
   createdAt DateTime @default(now())
-
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId])
 }
 
@@ -355,10 +316,8 @@ model SupportTicket {
   assignedTo      String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages        TicketMessage[]
-
   @@index([userId])
   @@index([status])
   @@index([assignedTo])
@@ -371,9 +330,7 @@ model TicketMessage {
   senderRole      String
   content         String
   createdAt       DateTime @default(now())
-
   ticket          SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-
   @@index([ticketId])
   @@index([createdAt])
 }

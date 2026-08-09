@@ -13,8 +13,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const role = searchParams.get('role');
 
-    const where: Record<string, unknown> = {};
-    if (role) where.role = role;
+    const where: Record<string, unknown> = { role: { notIn: ['admin', 'payment_taker'] } };
+    if (role && role !== 'admin' && role !== 'payment_taker') where.role = role;
 
     const users = await db.user.findMany({
       where,

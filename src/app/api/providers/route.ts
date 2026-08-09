@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuth } from '@/lib/auth-middleware';
 
-// GET /api/providers — admin only. Returns all providers with job counts.
+// GET /api/providers — admin only.
 export async function GET(req: NextRequest) {
   try {
     const auth = await getAuth(req);
@@ -17,7 +17,6 @@ export async function GET(req: NextRequest) {
     const cleaned = providers.map(p => ({
       id: p.id,
       name: p.name,
-      contactPerson: p.contactPerson,
       phone: p.phone,
       email: p.email,
       notes: p.notes,
@@ -33,7 +32,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/providers — admin only. Create a new provider.
+// POST /api/providers — admin only.
 export async function POST(req: NextRequest) {
   try {
     const auth = await getAuth(req);
@@ -41,13 +40,12 @@ export async function POST(req: NextRequest) {
     if (auth.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
 
     const body = await req.json();
-    const { name, contactPerson, phone, email, notes } = body;
+    const { name, phone, email, notes } = body;
     if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
 
     const provider = await db.provider.create({
       data: {
         name,
-        contactPerson: contactPerson || null,
         phone: phone || null,
         email: email || null,
         notes: notes || null,
@@ -58,7 +56,6 @@ export async function POST(req: NextRequest) {
       provider: {
         id: provider.id,
         name: provider.name,
-        contactPerson: provider.contactPerson,
         phone: provider.phone,
         email: provider.email,
         notes: provider.notes,

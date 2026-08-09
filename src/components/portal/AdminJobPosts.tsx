@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import {
   Plus, Trash2, AlertCircle, RefreshCw, Globe, Copy, Check, Edit3, X,
-  DollarSign, Clock, MapPin, Tag, Briefcase, Network, Share2, Eye,
+  DollarSign, Clock, MapPin, Network, Share2, Eye, Briefcase, Video, HelpCircle,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -23,8 +23,9 @@ const PAY_FREQUENCIES = ['hourly', 'weekly', 'bi-weekly', 'monthly'];
 const CATEGORIES = ['Customer Support', 'Technical Support', 'Sales', 'Live Chat', 'Email Support', 'Appointment Setting', 'Bilingual', 'Virtual Assistant'];
 const SHIFTS = ['Morning', 'Afternoon', 'Night', 'Flexible'];
 
-const PAY_LABEL: Record<string, string> = {
-  'hourly': 'per hour', 'weekly': 'per week', 'bi-weekly': 'bi-weekly', 'monthly': 'per month',
+const PAY_FREQ_TEXT: Record<string, string> = {
+  'hourly': 'Paid hourly', 'weekly': 'Paid weekly',
+  'bi-weekly': 'Paid bi-weekly', 'monthly': 'Paid monthly',
 };
 
 interface FormState {
@@ -39,13 +40,16 @@ interface FormState {
   location: string;
   providerId: string;
   commission: string;
+  assessmentQuestions: string[];
   isActive: boolean;
 }
 
 const EMPTY_FORM: FormState = {
   jobTitle: '', description: '', skills: [], requirements: [],
   hourlyRate: '', payFrequency: 'bi-weekly', category: '', shift: '',
-  location: 'Remote', providerId: '', commission: '', isActive: true,
+  location: 'Remote', providerId: '', commission: '',
+  assessmentQuestions: ['', '', '', '', ''],
+  isActive: true,
 };
 
 export default function AdminJobPosts() {
@@ -92,6 +96,12 @@ export default function AdminJobPosts() {
       addToast({ title: 'Required fields missing', description: 'Job title and description are required', variant: 'destructive' });
       return;
     }
+    // Validate 5 assessment questions
+    const filledQuestions = form.assessmentQuestions.filter(q => q.trim());
+    if (filledQuestions.length !== 5) {
+      addToast({ title: 'Assessment questions required', description: 'Exactly 5 assessment questions are required.', variant: 'destructive' });
+      return;
+    }
     setLoading(true);
     try {
       const body = {
@@ -106,6 +116,7 @@ export default function AdminJobPosts() {
         location: form.location,
         providerId: form.providerId || null,
         commission: Number(form.commission) || 0,
+        assessmentQuestions: filledQuestions,
         isActive: form.isActive,
       };
 
@@ -135,6 +146,7 @@ export default function AdminJobPosts() {
 
   const handleEdit = (post: JobPost) => {
     setEditingId(post.id);
+    const aq = (post as any).assessmentQuestions || [];
     setForm({
       jobTitle: post.jobTitle,
       description: post.description,
@@ -145,42 +157,29 @@ export default function AdminJobPosts() {
       category: post.category || '',
       shift: post.shift || '',
       location: post.location || 'Remote',
-      providerId: post.providerId || '',
-      commission: String(post.commission || ''),
+      providerId: (post as any).providerId || '',
+      commission: String((post as any).commission || ''),
+      assessmentQuestions: aq.length === 5 ? aq : ['', '', '', '', ''],
       isActive: post.isActive,
     });
     setOpen(true);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Deactivate this job post? It will no longer appear on the career page.')) return;
+    if (!confirm('Deactivate this job post?')) return;
     try {
       const res = await fetch(`/api/job-posts?id=${id}`, { method: 'DELETE', headers });
-      if (res.ok) {
-        addToast({ title: 'Job post deactivated', variant: 'success' });
-        load();
-      } else {
-        addToast({ title: 'Failed to delete', variant: 'destructive' });
-      }
-    } catch {
-      addToast({ title: 'Network error', variant: 'destructive' });
-    }
+      if (res.ok) { addToast({ title: 'Job post deactivated', variant: 'success' }); load(); }
+    } catch { addToast({ title: 'Network error', variant: 'destructive' }); }
   };
 
   const handleToggleActive = async (post: JobPost) => {
     try {
       const res = await fetch(`/api/job-posts?id=${post.id}`, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({ isActive: !post.isActive }),
+        method: 'PATCH', headers, body: JSON.stringify({ isActive: !post.isActive }),
       });
-      if (res.ok) {
-        addToast({ title: post.isActive ? 'Job deactivated' : 'Job activated', variant: 'success' });
-        load();
-      }
-    } catch {
-      addToast({ title: 'Network error', variant: 'destructive' });
-    }
+      if (res.ok) { addToast({ title: post.isActive ? 'Deactivated' : 'Activated', variant: 'success' }); load(); }
+    } catch { addToast({ title: 'Network error', variant: 'destructive' }); }
   };
 
   const handleCopyLink = async (post: JobPost) => {
@@ -189,21 +188,18 @@ export default function AdminJobPosts() {
       await navigator.clipboard.writeText(url);
       setCopiedId(post.id);
       setTimeout(() => setCopiedId(null), 2000);
-      addToast({ title: 'Link copied!', description: 'Share it anywhere — agents will land on the career page for this job.', variant: 'success' });
-    } catch {
-      addToast({ title: 'Failed to copy', variant: 'destructive' });
-    }
+      addToast({ title: 'Link copied!', variant: 'success' });
+    } catch { addToast({ title: 'Failed to copy', variant: 'destructive' }); }
   };
 
   const handleShare = async (post: JobPost) => {
     const url = `${window.location.origin}/?job=${post.id}#careers`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: post.jobTitle + ' — Gig Solutions', text: 'Check out this remote job', url });
-      } catch { /* dismissed */ }
-    } else {
-      handleCopyLink(post);
-    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(post.id);
+      setTimeout(() => setCopiedId(null), 2000);
+      addToast({ title: 'Link copied!', description: 'Direct job link copied to clipboard.', variant: 'success' });
+    } catch { addToast({ title: 'Failed to copy', variant: 'destructive' }); }
   };
 
   const addSkill = () => {
@@ -212,7 +208,6 @@ export default function AdminJobPosts() {
       setSkillInput('');
     }
   };
-
   const addReq = () => {
     if (reqInput.trim() && !form.requirements.includes(reqInput.trim())) {
       setForm(f => ({ ...f, requirements: [...f.requirements, reqInput.trim()] }));
@@ -220,21 +215,13 @@ export default function AdminJobPosts() {
     }
   };
 
-  if (pageLoading) {
-    return <div className="flex items-center justify-center py-12"><div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
-  }
-
+  if (pageLoading) return <div className="flex items-center justify-center py-12"><div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
   if (error) {
     return (
-      <Card className="border-red-200 bg-red-50/50">
-        <CardContent className="p-8 text-center">
-          <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-3" />
-          <p className="text-sm font-medium text-red-700 mb-1">Failed to load job posts</p>
-          <Button variant="outline" size="sm" onClick={load} className="border-red-300 text-red-600 hover:bg-red-100">
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />Try Again
-          </Button>
-        </CardContent>
-      </Card>
+      <Card className="border-red-200 bg-red-50/50"><CardContent className="p-8 text-center">
+        <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-3" />
+        <Button variant="outline" size="sm" onClick={load}><RefreshCw className="h-3.5 w-3.5 mr-1.5" />Try Again</Button>
+      </CardContent></Card>
     );
   }
 
@@ -245,27 +232,12 @@ export default function AdminJobPosts() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Job Posts</h2>
-          <p className="text-sm text-gray-500">Create and manage job postings. Provider info is internal-only.</p>
+          <p className="text-sm text-gray-500">Create and manage job postings with video assessments.</p>
         </div>
-        <Button
-          className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
-          onClick={() => { setForm(EMPTY_FORM); setEditingId(null); setOpen(true); }}
-        >
+        <Button className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90" onClick={() => { setForm(EMPTY_FORM); setEditingId(null); setOpen(true); }}>
           <Plus className="h-4 w-4 mr-2" />New Job Post
         </Button>
       </div>
-
-      {providers.length === 0 && (
-        <Card className="border-amber-200 bg-amber-50/50">
-          <CardContent className="p-4 flex items-center gap-3">
-            <Network className="h-5 w-5 text-amber-600 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm text-amber-800 font-medium">No providers yet</p>
-              <p className="text-xs text-amber-700">You can still post jobs without a provider, but for accurate tracking, add providers first.</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <div className="space-y-4">
         {posts.length === 0 ? (
@@ -287,17 +259,21 @@ export default function AdminJobPosts() {
                   <h3 className="font-semibold text-gray-900">{post.jobTitle}</h3>
                   <div className="flex items-center gap-3 mt-1.5 text-xs flex-wrap">
                     <span className="flex items-center gap-1 text-gray-500"><MapPin className="h-3 w-3" />{post.location || 'Remote'}</span>
-                    {post.hourlyRate > 0 && <span className="flex items-center gap-1 text-[#16A34A] font-semibold"><DollarSign className="h-3 w-3" />${post.hourlyRate.toFixed(2)} {PAY_LABEL[post.payFrequency]}</span>}
-                    {post.commission > 0 && <span className="flex items-center gap-1 text-purple-600 font-medium"><Network className="h-3 w-3" />Commission: ${post.commission.toFixed(2)}</span>}
+                    {post.hourlyRate > 0 && <span className="flex items-center gap-1 text-[#16A34A] font-semibold"><DollarSign className="h-3 w-3" />{post.hourlyRate.toFixed(2)}/hr</span>}
+                    <span className="flex items-center gap-1 text-gray-500"><Clock className="h-3 w-3" />{PAY_FREQ_TEXT[post.payFrequency] || 'Paid bi-weekly'}</span>
+                    {(post as any).commission > 0 && <span className="flex items-center gap-1 text-purple-600 font-medium"><Network className="h-3 w-3" />Commission: {(post as any).commission}%</span>}
+                    {/* Video assessment badge */}
+                    {((post as any).assessmentQuestions?.length || 0) === 5 && (
+                      <span className="flex items-center gap-1 text-blue-600 font-medium"><Video className="h-3 w-3" />Video Assessment (5 Qs)</span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-600 mt-2 line-clamp-2">{post.description}</p>
 
-                  {/* Internal-only info — admin sees this, public doesn't */}
                   <div className="mt-3 p-2.5 rounded-md bg-gray-50 border border-gray-200">
-                    <div className="flex items-center gap-2 text-xs">
+                    <div className="flex items-center gap-2 text-xs flex-wrap">
                       <Network className="h-3.5 w-3.5 text-gray-400" />
                       <span className="text-gray-500">Provider:</span>
-                      <span className="font-medium text-gray-700">{providerName(post.providerId) || '— None —'}</span>
+                      <span className="font-medium text-gray-700">{providerName((post as any).providerId) || '— None —'}</span>
                       {post._count?.applications != null && (
                         <>
                           <span className="text-gray-300 mx-1">·</span>
@@ -308,30 +284,18 @@ export default function AdminJobPosts() {
                       )}
                     </div>
                   </div>
-
-                  {post.skills && post.skills.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {post.skills.slice(0, 5).map((s, i) => <Badge key={i} variant="outline" className="text-[10px]">{s}</Badge>)}
-                    </div>
-                  )}
                 </div>
 
                 <div className="flex flex-col gap-1 shrink-0">
-                  <Button variant="ghost" size="sm" onClick={() => handleCopyLink(post)} title="Copy shareable link">
+                  <Button variant="ghost" size="sm" onClick={() => handleCopyLink(post)} title="Copy link">
                     {copiedId === post.id ? <Check className="h-4 w-4 text-[#16A34A]" /> : <Copy className="h-4 w-4" />}
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleShare(post)} title="Share">
-                    <Share2 className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleEdit(post)} title="Edit">
-                    <Edit3 className="h-4 w-4" />
-                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => handleShare(post)} title="Share"><Share2 className="h-4 w-4" /></Button>
+                  <Button variant="ghost" size="sm" onClick={() => handleEdit(post)} title="Edit"><Edit3 className="h-4 w-4" /></Button>
                   <Button variant="ghost" size="sm" onClick={() => handleToggleActive(post)} title={post.isActive ? 'Deactivate' : 'Activate'}>
                     <Eye className={`h-4 w-4 ${post.isActive ? 'text-[#16A34A]' : 'text-gray-400'}`} />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(post.id)} className="text-gray-400 hover:text-red-500" title="Delete">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => handleDelete(post.id)} className="text-gray-400 hover:text-red-500" title="Delete"><Trash2 className="h-4 w-4" /></Button>
                 </div>
               </div>
             </CardContent>
@@ -353,20 +317,20 @@ export default function AdminJobPosts() {
 
             <div className="space-y-2">
               <Label>Description *</Label>
-              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={6} placeholder="Full job description, responsibilities, what the agent will do..." />
+              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={5} placeholder="Full job description..." />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Hourly Rate ($)</Label>
-                <Input type="number" step="0.01" value={form.hourlyRate} onChange={e => setForm(f => ({ ...f, hourlyRate: e.target.value }))} placeholder="15.00" />
+                <Label>Hourly Rate ($/hr)</Label>
+                <Input type="number" step="0.01" value={form.hourlyRate} onChange={e => setForm(f => ({ ...f, hourlyRate: e.target.value }))} placeholder="6.50" />
               </div>
               <div className="space-y-2">
                 <Label>Pay Frequency</Label>
                 <Select value={form.payFrequency} onValueChange={v => setForm(f => ({ ...f, payFrequency: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {PAY_FREQUENCIES.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                    {PAY_FREQUENCIES.map(f => <SelectItem key={f} value={f}>{PAY_FREQ_TEXT[f]}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -428,13 +392,34 @@ export default function AdminJobPosts() {
                   {form.requirements.map((r, i) => (
                     <li key={i} className="flex items-center gap-2 text-sm text-gray-700">
                       <span className="flex-1">• {r}</span>
-                      <button onClick={() => setForm(f => ({ ...f, requirements: f.requirements.filter((_, idx) => idx !== i) }))} className="text-gray-400 hover:text-red-500">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                      <button onClick={() => setForm(f => ({ ...f, requirements: f.requirements.filter((_, idx) => idx !== i) }))} className="text-gray-400 hover:text-red-500"><X className="h-3.5 w-3.5" /></button>
                     </li>
                   ))}
                 </ul>
               )}
+            </div>
+
+            {/* Video Assessment Questions — 5 required */}
+            <div className="space-y-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="flex items-center gap-2">
+                <Video className="h-4 w-4 text-blue-600" />
+                <Label className="text-sm font-semibold text-blue-900">Video Assessment Questions *</Label>
+              </div>
+              <p className="text-xs text-blue-700">
+                Agents will record a video response for each question. Enter exactly 5 questions.
+              </p>
+              {form.assessmentQuestions.map((q, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white text-xs font-bold mt-1">{i + 1}</span>
+                  <Textarea
+                    value={q}
+                    onChange={e => setForm(f => ({ ...f, assessmentQuestions: f.assessmentQuestions.map((qq, idx) => idx === i ? e.target.value : qq) }))}
+                    rows={2}
+                    placeholder={`Question ${i + 1}: e.g., "Why do you want this role?"`}
+                    className="text-sm"
+                  />
+                </div>
+              ))}
             </div>
 
             {/* Provider (internal) */}
@@ -445,7 +430,7 @@ export default function AdminJobPosts() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">Provider (who gave us this job)</Label>
+                  <Label className="text-xs">Provider</Label>
                   <Select value={form.providerId} onValueChange={v => setForm(f => ({ ...f, providerId: v }))}>
                     <SelectTrigger><SelectValue placeholder="— None —" /></SelectTrigger>
                     <SelectContent>
@@ -454,8 +439,8 @@ export default function AdminJobPosts() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Commission ($)</Label>
-                  <Input type="number" step="0.01" value={form.commission} onChange={e => setForm(f => ({ ...f, commission: e.target.value }))} placeholder="0.00" />
+                  <Label className="text-xs">Commission (%)</Label>
+                  <Input type="number" step="0.1" min="0" max="100" value={form.commission} onChange={e => setForm(f => ({ ...f, commission: e.target.value }))} placeholder="15" />
                 </div>
               </div>
             </div>

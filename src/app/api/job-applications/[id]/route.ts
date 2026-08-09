@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuth } from '@/lib/auth-middleware';
+import { createNotification } from '@/lib/notifications';
 
 // PATCH /api/job-applications/[id] — admin updates application status.
-//   body: { status: 'reviewed' | 'hired' | 'rejected' }
-// If status === 'hired', a Placement is auto-created.
+//   body: { status: 'hired' | 'rejected' }
+// If status === 'hired', a Placement is auto-created + agent notified.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const auth = await getAuth(req);
@@ -14,7 +15,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { id } = await params;
     const body = await req.json();
     const { status, salary, startDate, nextSalaryDate } = body;
-    if (!['reviewed', 'hired', 'rejected'].includes(status)) {
+    if (!['hired', 'rejected'].includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
     }
 
@@ -23,13 +24,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: { status },
     });
 
-    // Auto-create a placement when hired
-    if (status === 'hired') {
-      const app = await db.jobApplication.findUnique({
-        where: { id },
-        include: { jobPost: true, agent: { include: { user: true } } },
+    const app = await db.jobApplication.findUnique({
+      where: { id },
+      include: { jobPost: true, agent: { include: { user: true } } },
+    });
+
+    if (status === 'hired' && app) {
+      const existing = await db.placement.findFirst({
+        where: { agentId: app.agentId, jobPostId: app.jobPostId, status: 'active' },
       });
-      if (app && !await db.placement.findFirst({ where: { agentId: app.agentId, jobPostId: app.jobPostId, status: 'active' } })) {
+      if (!existing) {
         await db.placement.create({
           data: {
             agentId: app.agentId,
@@ -41,17 +45,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             status: 'active',
           },
         });
-        // Notify the agent
-        try {
-          const { createNotificationBulk } = await import('@/lib/notifications');
-          await createNotificationBulk([app.agent.userId], {
-            title: 'You\'re Hired!',
-            message: 'You have been hired for "' + (app.jobPost?.jobTitle || 'the job') + '". Check "My Work" for details.',
-            type: 'placement',
-          });
-        } catch (e) {
-          console.error('[job-applications PATCH] notification failed:', e);
-        }
+      }
+      // Notify the agent: "Congratulations, your application has been approved, and you've been hired for the job."
+      try {
+        await createNotification({
+          userId: app.agent.userId,
+          title: 'Congratulations — You\'re Hired!',
+          message: 'Your application has been approved, and you\'ve been hired for "' + (app.jobPost?.jobTitle || 'the job') + '". Check "My Work" for details.',
+          type: 'hired',
+        });
+      } catch (e) {
+        console.error('[job-applications PATCH] notification failed:', e);
+      }
+    } else if (status === 'rejected' && app) {
+      try {
+        await createNotification({
+          userId: app.agent.userId,
+          title: 'Application Update',
+          message: 'Your application for "' + (app.jobPost?.jobTitle || 'the job') + '" was not selected at this time. Keep applying for other opportunities!',
+          type: 'rejected',
+        });
+      } catch (e) {
+        console.error('[job-applications PATCH] rejection notification failed:', e);
       }
     }
 

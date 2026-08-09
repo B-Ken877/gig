@@ -1,5 +1,4 @@
-// seed.js — reset admin password and create sample data
-// Run with: cd /root/gig-src && node seed.js
+// seed.js — reset passwords and create sample data with video assessment questions
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 
@@ -14,7 +13,6 @@ async function main() {
   });
   console.log('  Admin password reset to: Admin123!');
 
-  // Also reset the test agent password
   console.log('Resetting test agent password...');
   await prisma.user.update({
     where: { email: 'testagent@test.com' },
@@ -22,30 +20,35 @@ async function main() {
   });
   console.log('  Test agent password reset to: Admin123!');
 
+  // Clean old data
+  console.log('Cleaning old data...');
+  await prisma.videoResponse.deleteMany();
+  await prisma.jobApplication.deleteMany();
+  await prisma.placement.deleteMany();
+  await prisma.salaryDate.deleteMany();
+  await prisma.jobPost.deleteMany();
+  await prisma.provider.deleteMany();
+  // Also clean old Assessment table if it exists
+  try { await prisma.assessment.deleteMany(); } catch {}
+  console.log('  Old data cleared.');
+
   // Create sample providers
   console.log('Creating sample providers...');
   const providers = [
-    { name: 'Telus International', contactPerson: 'Miguel Sanchez', phone: '+1 305 555 0100', email: 'miguel@telus-intl.com', notes: 'Long-term partner for customer support roles.' },
-    { name: 'Caribbean BPO Solutions', contactPerson: 'Sandra Thompson', phone: '+1 876 555 0200', email: 'sandra@caribbpo.com', notes: 'Specializes in bilingual agents.' },
-    { name: 'TechCall Inc.', contactPerson: 'John Bernard', phone: '+509 5555 0300', email: 'john@techcall.com', notes: 'Tech support campaigns.' },
+    { name: 'Miguel Sanchez', phone: '+1 305 555 0100', email: 'miguel.sanchez@email.com', notes: 'Provides customer support and sales campaigns.' },
+    { name: 'Sandra Thompson', phone: '+1 876 555 0200', email: 'sandra.thompson@email.com', notes: 'Specializes in bilingual agent placements.' },
+    { name: 'John Bernard', phone: '+509 5555 0300', email: 'john.bernard@email.com', notes: 'Tech support campaigns.' },
   ];
-
   for (const p of providers) {
-    const existing = await prisma.provider.findFirst({ where: { name: p.name } });
-    if (!existing) {
-      await prisma.provider.create({ data: p });
-      console.log('  Created provider:', p.name);
-    } else {
-      console.log('  Provider already exists:', p.name);
-    }
+    await prisma.provider.create({ data: p });
+    console.log('  Created provider:', p.name);
   }
 
-  // Fetch providers for job posts
   const allProviders = await prisma.provider.findMany();
   const providerMap = new Map(allProviders.map(p => [p.name, p]));
 
-  // Create sample job posts
-  console.log('Creating sample job posts...');
+  // Create sample job posts WITH video assessment questions (5 each)
+  console.log('Creating sample job posts with video assessment questions...');
   const jobs = [
     {
       jobTitle: 'Customer Support Agent — English',
@@ -57,13 +60,20 @@ async function main() {
       category: 'Customer Support',
       shift: 'Night',
       location: 'Remote — Caribbean',
-      providerId: providerMap.get('Telus International')?.id || null,
-      commission: 200,
+      providerId: providerMap.get('Miguel Sanchez')?.id || null,
+      commission: 15,
+      assessmentQuestions: [
+        'Tell us about yourself and why you are interested in this customer support role.',
+        'Describe a time when you had to deal with a difficult customer. How did you handle the situation?',
+        'What does excellent customer service mean to you? Give an example.',
+        'How do you handle working under pressure and meeting performance targets?',
+        'What are your salary expectations and when can you start?',
+      ],
       isActive: true,
     },
     {
       jobTitle: 'Bilingual Technical Support Specialist',
-      description: 'Provide Level 1 technical support for a SaaS platform. Troubleshoot login issues, billing questions, and basic product configuration. Must be fluent in English and Spanish.\n\nResponsibilities:\n• Handle 30-40 support tickets per shift via chat and email\n• Escalate complex issues to Tier 2\n• Contribute to knowledge base articles\n• Participate in weekly team meetings',
+      description: 'Provide Level 1 technical support for a SaaS platform. Troubleshoot login issues, billing questions, and basic product configuration. Must be fluent in English and Spanish.',
       skills: ['Technical Support', 'Bilingual', 'SaaS', 'Troubleshooting', 'Spanish', 'English'],
       requirements: ['6+ months tech support experience', 'Fluent in English AND Spanish', 'Familiar with help desk software', 'Strong problem-solving skills', 'Computer with 8GB+ RAM'],
       hourlyRate: 8.00,
@@ -71,13 +81,20 @@ async function main() {
       category: 'Technical Support',
       shift: 'Flexible',
       location: 'Remote — Caribbean',
-      providerId: providerMap.get('Caribbean BPO Solutions')?.id || null,
-      commission: 250,
+      providerId: providerMap.get('Sandra Thompson')?.id || null,
+      commission: 20,
+      assessmentQuestions: [
+        'Introduce yourself in both English and Spanish. Tell us about your tech support experience.',
+        'Walk us through how you would troubleshoot a customer who cannot log into their account.',
+        'Describe a complex technical issue you resolved for a customer. What was your process?',
+        'How do you stay calm when a customer is frustrated with a technical problem?',
+        'What tools or software are you most comfortable using for technical support?',
+      ],
       isActive: true,
     },
     {
       jobTitle: 'Sales & Outbound Agent',
-      description: 'Outbound calling campaign for a B2B software company. Generate leads, qualify prospects, and schedule demos for the sales team. Commission on top of base pay.\n\nResponsibilities:\n• Make 80-100 outbound calls per shift\n• Follow provided scripts and objection handling\n• Update CRM with call outcomes\n• Hit weekly meeting-set targets',
+      description: 'Outbound calling campaign for a B2B software company. Generate leads, qualify prospects, and schedule demos for the sales team.',
       skills: ['Sales', 'Outbound Calling', 'Lead Generation', 'CRM', 'Communication'],
       requirements: ['6+ months sales or telemarketing experience', 'Confident phone presence', 'Goal-oriented and self-motivated', 'Quiet workspace', 'Reliable internet'],
       hourlyRate: 7.00,
@@ -85,13 +102,20 @@ async function main() {
       category: 'Sales',
       shift: 'Morning',
       location: 'Remote — Caribbean',
-      providerId: providerMap.get('TechCall Inc.')?.id || null,
-      commission: 300,
+      providerId: providerMap.get('John Bernard')?.id || null,
+      commission: 25,
+      assessmentQuestions: [
+        'Tell us about your sales experience and why you are passionate about sales.',
+        'Sell us a common household object (pen, mug, etc.) in 60 seconds.',
+        'How do you handle rejection and stay motivated after a tough call?',
+        'Describe your approach to qualifying a lead. What questions do you ask?',
+        'What are your weekly sales targets and how do you plan to achieve them?',
+      ],
       isActive: true,
     },
     {
       jobTitle: 'Live Chat Support Agent',
-      description: 'Manage 3-4 simultaneous live chat conversations for an e-commerce brand. Provide product recommendations, answer questions, and resolve issues in real-time.\n\nResponsibilities:\n• Handle 3-4 concurrent chat sessions\n• Maintain response time under 60 seconds\n• Upsell when appropriate\n• Document complex issues for follow-up',
+      description: 'Manage 3-4 simultaneous live chat conversations for an e-commerce brand.',
       skills: ['Live Chat', 'Customer Support', 'Multitasking', 'E-commerce', 'Typing 60+ WPM'],
       requirements: ['Typing speed 60+ WPM', '6+ months chat or customer support experience', 'Strong written communication', 'Ability to multitask', 'Reliable internet'],
       hourlyRate: 5.50,
@@ -99,13 +123,20 @@ async function main() {
       category: 'Live Chat',
       shift: 'Afternoon',
       location: 'Remote — Caribbean',
-      providerId: providerMap.get('Telus International')?.id || null,
-      commission: 150,
+      providerId: providerMap.get('Miguel Sanchez')?.id || null,
+      commission: 10,
+      assessmentQuestions: [
+        'Why are you interested in live chat support specifically (vs phone support)?',
+        'How do you manage multiple conversations at once without losing track?',
+        'Write a sample chat response to: "My order is 3 days late and I need it urgently!"',
+        'What do you do if you do not know the answer to a customer question immediately?',
+        'How do you maintain a friendly tone in writing when you are busy?',
+      ],
       isActive: true,
     },
     {
       jobTitle: 'Email Support Specialist',
-      description: 'Manage a shared inbox for a subscription-based service. Respond to customer emails within 4 business hours with professional, accurate, and empathetic communication.\n\nResponsibilities:\n• Process 40-60 emails per shift\n• Maintain 98%+ quality score\n• Identify trends and escalate recurring issues\n• Collaborate with Tier 2 on complex cases',
+      description: 'Manage a shared inbox for a subscription-based service. Respond to customer emails within 4 business hours.',
       skills: ['Email Support', 'Customer Support', 'Writing', 'Attention to Detail'],
       requirements: ['Excellent written English', '6+ months email or ticket support experience', 'Detail-oriented', 'Patient and empathetic', 'Reliable internet'],
       hourlyRate: 6.00,
@@ -113,48 +144,42 @@ async function main() {
       category: 'Email Support',
       shift: 'Flexible',
       location: 'Remote — Caribbean',
-      providerId: null, // internal — no provider assigned
+      providerId: null,
       commission: 0,
+      assessmentQuestions: [
+        'Tell us about your experience with email or ticket-based support.',
+        'How do you prioritize emails when you have 50 unread in your inbox?',
+        'Write a professional email response to a customer requesting a refund for a defective product.',
+        'How do you handle a customer who has emailed multiple times and is clearly frustrated?',
+        'What does "SLA compliance" mean to you and how do you ensure you meet it?',
+      ],
       isActive: true,
     },
   ];
 
   for (const job of jobs) {
-    const existing = await prisma.jobPost.findFirst({ where: { jobTitle: job.jobTitle } });
-    if (!existing) {
-      await prisma.jobPost.create({
-        data: {
-          ...job,
-          skills: JSON.stringify(job.skills),
-          requirements: JSON.stringify(job.requirements),
-        },
-      });
-      console.log('  Created job:', job.jobTitle);
-    } else {
-      console.log('  Job already exists:', job.jobTitle);
-    }
+    await prisma.jobPost.create({
+      data: {
+        ...job,
+        skills: JSON.stringify(job.skills),
+        requirements: JSON.stringify(job.requirements),
+        assessmentQuestions: JSON.stringify(job.assessmentQuestions),
+      },
+    });
+    console.log('  Created job:', job.jobTitle, '— with', job.assessmentQuestions.length, 'assessment questions');
   }
 
-  // Create sample salary dates
+  // Create salary dates
   console.log('Creating salary dates...');
   const now = new Date();
-  const salaryDates = [];
   for (let i = 0; i < 4; i++) {
     const d = new Date(now);
-    d.setDate(d.getDate() + (14 * i) + 7); // every 2 weeks, starting next week
+    d.setDate(d.getDate() + (14 * i) + 7);
     d.setHours(0, 0, 0, 0);
-    salaryDates.push({
-      payDate: d,
-      frequency: 'bi-weekly',
-      description: i === 0 ? 'Next pay cycle' : `Pay cycle ${i + 1}`,
+    await prisma.salaryDate.create({
+      data: { payDate: d, frequency: 'bi-weekly', description: i === 0 ? 'Next pay cycle' : 'Pay cycle ' + (i + 1) },
     });
-  }
-  for (const sd of salaryDates) {
-    const existing = await prisma.salaryDate.findFirst({ where: { payDate: sd.payDate } });
-    if (!existing) {
-      await prisma.salaryDate.create({ data: sd });
-      console.log('  Created salary date:', sd.payDate.toISOString().split('T')[0]);
-    }
+    console.log('  Created salary date:', d.toISOString().split('T')[0]);
   }
 
   console.log('\n=== Seed complete ===');

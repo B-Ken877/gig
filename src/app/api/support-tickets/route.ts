@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
         message: 'A new ticket: "' + subject + '"',
         type: 'support_ticket',
         pushBody: 'New ticket from ' + (auth.userId || 'a user') + ': ' + subject,
-        pushUrl: 'https://167.86.124.101:4001/#tickets',
+        pushUrl: 'https://gigsolutions.app/#tickets',
       });
     }
 
@@ -117,7 +117,7 @@ export async function PUT(req: NextRequest) {
         message: 'Your ticket "' + ticket.subject + '" has been resolved.',
         type: 'support_ticket',
         pushBody: 'Your ticket has been resolved',
-        pushUrl: 'https://167.86.124.101:4001/#support',
+        pushUrl: 'https://gigsolutions.app/#support',
       });
     }
 

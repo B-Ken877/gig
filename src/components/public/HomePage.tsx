@@ -85,7 +85,7 @@ export default function HomePage() {
                 onClick={() => navigateTo('careers')}>
                 Browse Jobs <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
-              <Button size="lg" className="bg-[#0B1A2E] text-white hover:bg-[#0B1A2E]/90 border border-[#16A34A]/40"
+              <Button size="lg" className="bg-white text-[#0B1A2E] hover:bg-white/90 font-semibold"
                 onClick={() => navigateTo('register-agent')}>
                 Create Free Account <Users2 className="ml-2 h-4 w-4" />
               </Button>

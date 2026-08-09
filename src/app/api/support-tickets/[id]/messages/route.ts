@@ -91,7 +91,7 @@ export async function POST(
         message: content.trim().slice(0, 100),
         type: 'support_ticket',
         pushBody: content.trim().slice(0, 100),
-        pushUrl: 'https://167.86.124.101:4001/#tickets',
+        pushUrl: 'https://gigsolutions.app/#tickets',
       });
     } else if (isAssigned && ticket.userId) {
       // Support agent replied -> notify user
@@ -101,7 +101,7 @@ export async function POST(
         message: content.trim().slice(0, 100),
         type: 'support_ticket',
         pushBody: 'Support Agent replied to your ticket',
-        pushUrl: 'https://167.86.124.101:4001/#support',
+        pushUrl: 'https://gigsolutions.app/#support',
       });
     }
 

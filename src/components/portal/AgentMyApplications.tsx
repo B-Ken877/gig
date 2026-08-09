@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import {
   ClipboardList, AlertCircle, RefreshCw, MapPin, Clock, DollarSign,
-  CheckCircle2, XCircle, Eye, ArrowRight,
+  CheckCircle2, XCircle, Eye, ArrowRight, Video, Calendar,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,11 +10,15 @@ import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
 import type { JobApplication } from '@/lib/types';
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  applied: { label: 'Applied', color: 'text-blue-700', bg: 'bg-blue-100' },
-  reviewed: { label: 'Reviewed', color: 'text-amber-700', bg: 'bg-amber-100' },
-  hired: { label: 'Hired', color: 'text-green-700', bg: 'bg-green-100' },
-  rejected: { label: 'Not Selected', color: 'text-red-700', bg: 'bg-red-100' },
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+  applied: { label: 'Under Review', color: 'text-blue-700', bg: 'bg-blue-100', icon: Clock },
+  hired: { label: 'Hired', color: 'text-green-700', bg: 'bg-green-100', icon: CheckCircle2 },
+  rejected: { label: 'Not Selected', color: 'text-red-700', bg: 'bg-red-100', icon: XCircle },
+};
+
+const PAY_FREQ_TEXT: Record<string, string> = {
+  'hourly': 'Paid hourly', 'weekly': 'Paid weekly',
+  'bi-weekly': 'Paid bi-weekly', 'monthly': 'Paid monthly',
 };
 
 export default function AgentMyApplications() {
@@ -31,14 +35,10 @@ export default function AgentMyApplications() {
       setLoading(true);
       setError(null);
       try {
-        // Get agent record
         const agentRes = await fetch('/api/agents?userId=' + currentUser.id, { headers });
         const agentData = await agentRes.json();
         const me = agentData.id ? agentData : (agentData.agents || []).find((a: any) => a.userId === currentUser.id);
-        if (!me) {
-          setLoading(false);
-          return;
-        }
+        if (!me) { setLoading(false); return; }
         const appsRes = await fetch('/api/job-applications?agentId=' + me.id, { headers });
         const appsData = await appsRes.json();
         setApplications(appsData.applications || []);
@@ -51,25 +51,17 @@ export default function AgentMyApplications() {
   }, [currentUser]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" />
-      </div>
-    );
+    return <div className="flex items-center justify-center py-16"><div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
   }
 
   if (error) {
     return (
-      <Card className="border-red-200 bg-red-50/50">
-        <CardContent className="p-8 text-center">
-          <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-3" />
-          <p className="text-sm font-medium text-red-700 mb-1">Failed to load applications</p>
-          <p className="text-xs text-red-500 mb-4">{error}</p>
-          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />Try Again
-          </Button>
-        </CardContent>
-      </Card>
+      <Card className="border-red-200 bg-red-50/50"><CardContent className="p-8 text-center">
+        <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-3" />
+        <p className="text-sm font-medium text-red-700 mb-1">Failed to load applications</p>
+        <p className="text-xs text-red-500 mb-4">{error}</p>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()}><RefreshCw className="h-3.5 w-3.5 mr-1.5" />Try Again</Button>
+      </CardContent></Card>
     );
   }
 
@@ -86,20 +78,19 @@ export default function AgentMyApplications() {
       </div>
 
       {applications.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <ClipboardList className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm font-medium text-gray-700 mb-1">No applications yet</p>
-            <p className="text-xs text-gray-500 mb-4">Apply for jobs from your dashboard to see them here.</p>
-            <Button size="sm" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90" onClick={() => navigateTo('agent-dashboard' as never)}>
-              Browse Jobs
-            </Button>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="py-12 text-center">
+          <ClipboardList className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm font-medium text-gray-700 mb-1">No applications yet</p>
+          <p className="text-xs text-gray-500 mb-4">Apply for jobs from your dashboard to see them here.</p>
+          <Button size="sm" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90" onClick={() => navigateTo('agent-dashboard' as never)}>
+            Browse Jobs
+          </Button>
+        </CardContent></Card>
       ) : (
         <div className="space-y-3">
           {applications.map(app => {
             const status = STATUS_CONFIG[app.status] || STATUS_CONFIG.applied;
+            const StatusIcon = status.icon;
             return (
               <Card key={app.id}>
                 <CardContent className="p-5">
@@ -107,24 +98,22 @@ export default function AgentMyApplications() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="text-base font-semibold text-gray-900">{app.jobPost?.jobTitle || 'Job Post'}</h3>
-                        <Badge variant="secondary" className={`text-[10px] uppercase ${status.bg} ${status.color}`}>{status.label}</Badge>
+                        <Badge variant="secondary" className={`text-[10px] uppercase ${status.bg} ${status.color}`}>
+                          <StatusIcon className="h-3 w-3 mr-1" />{status.label}
+                        </Badge>
                       </div>
                       <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500 flex-wrap">
                         {app.jobPost?.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{app.jobPost.location}</span>}
                         {app.jobPost?.hourlyRate != null && app.jobPost.hourlyRate > 0 && (
-                          <span className="flex items-center gap-1 text-[#16A34A] font-semibold"><DollarSign className="h-3 w-3" />${app.jobPost.hourlyRate.toFixed(2)}</span>
+                          <span className="flex items-center gap-1 text-[#16A34A] font-semibold"><DollarSign className="h-3 w-3" />{app.jobPost.hourlyRate.toFixed(2)}/hr</span>
                         )}
-                        {app.jobPost?.shift && <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{app.jobPost.shift}</span>}
+                        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{PAY_FREQ_TEXT[app.jobPost?.payFrequency || 'bi-weekly'] || 'Paid bi-weekly'}</span>
                         <span className="flex items-center gap-1"><Clock className="h-3 w-3" />Applied {new Date(app.createdAt).toLocaleDateString()}</span>
                       </div>
-                      {app.assessmentPassed && (
-                        <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-700 text-[10px] font-medium">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Assessment Passed ({app.assessmentScore?.toFixed(0)}%)
+                      {(app.videoCount || 0) > 0 && (
+                        <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-[10px] font-medium">
+                          <Video className="h-3 w-3" />{app.videoCount} video response{app.videoCount !== 1 ? 's' : ''} submitted
                         </div>
-                      )}
-                      {app.coverMessage && (
-                        <p className="text-xs text-gray-600 mt-2 italic line-clamp-2">{app.coverMessage}</p>
                       )}
                     </div>
                   </div>

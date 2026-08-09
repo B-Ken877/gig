@@ -1,16 +1,15 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
-import { useAppStore } from '@/lib/store';
-import type { PageType } from '@/lib/types';
+import { useAppStore, authFetch } from '@/lib/store';
+import type { PageType, Notification } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X,
   Users, Briefcase, MessageCircle, ClipboardList, Headphones, GraduationCap,
-  Building2, DollarSign, CalendarClock, Network, ShieldCheck,
+  CalendarClock, Network, ShieldCheck, Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +21,7 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'Dashboard', page: 'agent-dashboard', icon: LayoutDashboard },
     { label: 'My Work', page: 'agent-my-work', icon: Briefcase },
     { label: 'My Applications', page: 'agent-applications', icon: ClipboardList },
+    { label: 'Identity Verification', page: 'agent-verify-id', icon: ShieldCheck },
     { label: 'My Profile', page: 'agent-profile', icon: User },
     { label: 'Documents', page: 'agent-documents', icon: FileText },
     { label: 'Availability', page: 'agent-availability', icon: Calendar },
@@ -45,13 +45,27 @@ function getPageTitle(page: PageType): string {
   const map: Partial<Record<PageType, string>> = {
     home: 'Home', services: 'Services', careers: 'Careers', about: 'About', contact: 'Contact', academy: 'Academy',
     'agent-dashboard': 'Dashboard', 'agent-profile': 'My Profile', 'agent-documents': 'Documents',
-    'agent-availability': 'Availability', 'agent-applications': 'My Applications', 'agent-my-work': 'My Work',
+    'agent-availability': 'Availability', 'agent-applications': 'My Applications', 'agent-my-work': 'My Work', 'agent-verify-id': 'Identity Verification',
     'admin-dashboard': 'Dashboard', 'admin-users': 'Users', 'admin-job-posts': 'Job Posts',
-    'admin-providers': 'Providers', 'admin-placements': 'Applications & Placements',
+    'admin-providers': 'Providers', 'admin-placements': 'Applications',
     'admin-salary-dates': 'Salary Dates',
-    'messages': 'Messages', 'pending-payment': 'Complete Payment', 'support': 'Customer Support', 'tickets': 'Support Tickets',
+    'messages': 'Messages', 'support': 'Customer Support', 'tickets': 'Support Tickets',
   };
   return map[page] || 'Dashboard';
+}
+
+// Map a notification type to the page the user should be taken to when they
+// click on the notification.
+function getNotificationPage(notif: Notification, role: string): PageType {
+  const t = notif.type || '';
+  if (t === 'job_post') return role === 'admin' ? 'admin-job-posts' : 'agent-dashboard';
+  if (t === 'job_application') return 'admin-placements';
+  if (t === 'hired' || t === 'placement') return 'agent-my-work';
+  if (t === 'rejected') return 'agent-applications';
+  if (t === 'message') return 'messages';
+  if (t === 'ticket' || t === 'support') return role === 'admin' ? 'tickets' : 'support';
+  // Default: go to dashboard
+  return role === 'admin' ? 'admin-dashboard' : 'agent-dashboard';
 }
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
@@ -64,12 +78,11 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   useEffect(() => { if (window.innerWidth < 1024) setSidebarOpen(false); }, [currentPage, setSidebarOpen]);
 
-  // Poll notifications every 30 seconds for the active user
   useEffect(() => {
     if (!currentUser) return;
     const loadNotifs = async () => {
       try {
-        const res = await fetch('/api/notifications', { headers: { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role } });
+        const res = await authFetch('/api/notifications');
         if (res.ok) {
           const data = await res.json();
           useAppStore.getState().setData('notifications', data.notifications || []);
@@ -81,25 +94,38 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     return () => { if (notifPollRef.current) clearInterval(notifPollRef.current); };
   }, [currentUser]);
 
-  const markAllRead = async () => {
+  // "Clear All" — deletes ALL notifications for this user (not just marks read).
+  const handleClearAll = async () => {
     if (!currentUser) return;
     try {
-      await fetch('/api/notifications', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role },
+      await authFetch('/api/notifications', { method: 'PATCH' });
+      useAppStore.getState().setData('notifications', []);
+    } catch { /* ignore */ }
+  };
+
+  // Click on a single notification → navigate to the right page + delete it.
+  const handleNotificationClick = async (notif: Notification) => {
+    if (!currentUser) return;
+    const targetPage = getNotificationPage(notif, role);
+    // Navigate first so the user sees the page immediately.
+    navigateTo(targetPage);
+    // Then delete the notification from the DB + local state.
+    try {
+      await authFetch('/api/notifications', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: notif.id }),
       });
-      useAppStore.getState().setData('notifications', (notifications || []).map(n => ({ ...n, isRead: true })));
+      useAppStore.getState().setData('notifications', (notifications || []).filter(n => n.id !== notif.id));
     } catch { /* ignore */ }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={cn(
         'fixed top-0 left-0 z-50 h-full w-72 bg-[#0B1A2E] text-white transition-transform duration-300 lg:translate-x-0',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
@@ -124,9 +150,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
                   onClick={() => navigateTo(item.page)}
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                    active
-                      ? 'bg-[#16A34A] text-white shadow-sm'
-                      : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                    active ? 'bg-[#16A34A] text-white shadow-sm' : 'text-gray-300 hover:bg-white/5 hover:text-white'
                   )}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
@@ -137,7 +161,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           </nav>
         </ScrollArea>
 
-        {/* Footer of sidebar — brand + role badge */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10 bg-[#0B1A2E]">
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <ShieldCheck className="h-3.5 w-3.5 text-[#16A34A]" />
@@ -147,23 +170,22 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </div>
       </aside>
 
-      {/* Main content */}
       <div className="lg:pl-72">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-white/95 backdrop-blur px-4 lg:px-6">
-          <button className="lg:hidden" onClick={() => setSidebarOpen(true)}>
-            <Menu className="h-5 w-5 text-gray-700" />
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-white/10 bg-[#122B4A] px-4 lg:px-6">
+          <button className="lg:hidden text-white/70 hover:text-white" onClick={() => setSidebarOpen(true)}>
+            <Menu className="h-5 w-5" />
           </button>
-          <h1 className="text-lg font-semibold text-gray-900">{pageTitle}</h1>
+          <h1 className="text-lg font-semibold text-white">{pageTitle}</h1>
 
           <div className="ml-auto flex items-center gap-2">
-            {/* Notifications dropdown */}
+            {/* Notifications */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="relative p-2 rounded-full hover:bg-gray-100 transition-colors">
-                  <Bell className="h-5 w-5 text-gray-600" />
-                  {unreadCount > 0 && (
+                <button className="relative p-2 rounded-full hover:bg-white/10 transition-colors">
+                  <Bell className="h-5 w-5 text-white/70" />
+                  {(notifications || []).length > 0 && (
                     <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                      {unreadCount > 9 ? '9+' : unreadCount}
+                      {(notifications || []).length > 9 ? '9+' : (notifications || []).length}
                     </span>
                   )}
                 </button>
@@ -171,13 +193,19 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto">
                 <div className="flex items-center justify-between px-3 py-2">
                   <span className="text-sm font-semibold">Notifications</span>
-                  {unreadCount > 0 && (
-                    <button onClick={markAllRead} className="text-xs text-[#16A34A] hover:underline">Mark all read</button>
+                  {(notifications || []).length > 0 && (
+                    <button onClick={handleClearAll} className="text-xs text-red-600 hover:underline flex items-center gap-1">
+                      <Trash2 className="h-3 w-3" /> Clear All
+                    </button>
                   )}
                 </div>
                 <DropdownMenuSeparator />
-                {(notifications || []).slice(0, 10).map(n => (
-                  <DropdownMenuItem key={n.id} className="flex flex-col items-start py-2">
+                {(notifications || []).slice(0, 20).map(n => (
+                  <DropdownMenuItem
+                    key={n.id}
+                    className="flex flex-col items-start py-2 cursor-pointer hover:bg-gray-50"
+                    onClick={() => handleNotificationClick(n)}
+                  >
                     <span className="text-sm font-medium">{n.title}</span>
                     <span className="text-xs text-gray-500">{n.message}</span>
                     <span className="text-[10px] text-gray-400 mt-0.5">{new Date(n.createdAt).toLocaleString()}</span>
@@ -192,7 +220,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             {/* User menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 p-1 rounded-full hover:bg-gray-100 transition-colors">
+                <button className="flex items-center gap-2 p-1 rounded-full hover:bg-white/10 transition-colors">
                   <Avatar className="h-8 w-8">
                     {currentUser?.avatar && <AvatarImage src={currentUser.avatar} alt={currentUser?.name || 'User'} />}
                     <AvatarFallback className="bg-[#16A34A] text-white text-xs font-bold">

@@ -24,16 +24,12 @@ const PUBLIC_PAGES: ReadonlySet<PageType> = new Set<PageType>([
 const VALID_PAGES: ReadonlySet<PageType> = new Set<PageType>([
   'home', 'services', 'careers', 'about', 'contact', 'academy',
   'login', 'register-agent', 'pending-payment',
-  'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability', 'agent-applications', 'agent-my-work',
+  'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability', 'agent-applications', 'agent-my-work', 'agent-verify-id',
   'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
   'admin-placements', 'admin-salary-dates',
   'messages', 'support', 'tickets',
 ]);
 
-// FEATURE: Role-based page access control.
-// The only roles that can log in are 'agent' and 'admin'. Any legacy
-// 'payment_taker' or 'client' rows in the DB are treated as 'admin' for
-// navigation purposes (so the CEO can still log in with an old account).
 function effectiveRole(role: string | undefined): UserRole {
   if (!role) return 'visitor';
   if (role === 'payment_taker' || role === 'client') return 'admin';
@@ -43,7 +39,7 @@ function effectiveRole(role: string | undefined): UserRole {
 const ROLE_PAGE_MAP: Partial<Record<UserRole, ReadonlySet<PageType>>> = {
   agent: new Set([
     'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability',
-    'agent-applications', 'agent-my-work', 'academy', 'messages', 'support',
+    'agent-applications', 'agent-my-work', 'agent-verify-id', 'academy', 'messages', 'support',
     'pending-payment',
   ]),
   admin: new Set([
@@ -100,9 +96,6 @@ interface NavSlice {
   currentPage: PageType;
   previousPages: PageType[];
   pendingChatUserId: string | null;
-  // Career page → login flow: when an unauthenticated visitor clicks "Apply"
-  // on a job, we stash the job ID here so that after login/register we can
-  // deep-link them straight into the assessment for that job.
   pendingJobId: string | null;
   navigateTo: (page: PageType) => void;
   goBack: () => void;
@@ -151,7 +144,6 @@ const createNavSlice = (
   syncFromHash: () => {
     if (typeof window === 'undefined') return;
     const hash = window.location.hash.replace('#', '');
-    // Support shareable job URL: #careers?job=<id>
     if (hash.startsWith('careers')) {
       set(() => ({ currentPage: 'careers' as PageType }));
       return;

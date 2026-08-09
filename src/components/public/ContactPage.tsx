@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Phone, Mail, Clock, Send, CheckCircle } from 'lucide-react';
+import { MapPin, Mail, Clock, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,7 +11,7 @@ import { useAppStore } from '@/lib/store';
 
 const fadeUp = { hidden: { opacity: 0, y: 30 }, visible: { opacity: 1, y: 0 } };
 const stagger = { visible: { transition: { staggerChildren: 0.12 } } };
-const SUBJECTS = ['General Inquiry', 'Agent Registration', 'Call Center Partnership', 'Payment Support', 'Technical Issue', 'Other'];
+const SUBJECTS = ['General Inquiry', 'Agent Registration', 'Partnership Inquiry', 'Payment Support', 'Technical Issue', 'Other'];
 const CONTACT_INFO = [
   { icon: Mail, label: 'Email', value: 'contact.gigsolutions@gmail.com', href: 'mailto:contact.gigsolutions@gmail.com' },
   { icon: MapPin, label: 'Location', value: 'Petion-ville, Port-au-Prince, Haiti', href: null },
@@ -19,6 +19,7 @@ const CONTACT_INFO = [
 ];
 
 export default function ContactPage() {
+  const { navigateTo } = useAppStore();
   const [form, setForm] = useState({ name: '', email: '', phone: '', subject: '', message: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const updateField = (field: string, value: string) => {
@@ -128,9 +129,9 @@ export default function ContactPage() {
               <div className="rounded-xl border bg-gray-50 p-5 mt-8">
                 <h3 className="text-sm font-semibold mb-3">Quick Links</h3>
                 <div className="space-y-2">
-                  <button onClick={() => useAppStore.getState().navigateTo('register-agent')} className="block w-full text-left text-sm text-[#16A34A] hover:underline py-1">Register as Agent &rarr;</button>
-                  <button onClick={() => useAppStore.getState().navigateTo('register-client')} className="block w-full text-left text-sm text-[#16A34A] hover:underline py-1">Register as Call Center &rarr;</button>
-                  <button onClick={() => useAppStore.getState().navigateTo('services')} className="block w-full text-left text-sm text-[#16A34A] hover:underline py-1">View Services &rarr;</button>
+                  <button onClick={() => navigateTo('register-agent')} className="block w-full text-left text-sm text-[#16A34A] hover:underline py-1">Register as Agent &rarr;</button>
+                  <button onClick={() => navigateTo('careers')} className="block w-full text-left text-sm text-[#16A34A] hover:underline py-1">Browse Jobs &rarr;</button>
+                  <button onClick={() => navigateTo('services')} className="block w-full text-left text-sm text-[#16A34A] hover:underline py-1">View Services &rarr;</button>
                 </div>
               </div>
             </div>
@@ -140,4 +141,3 @@ export default function ContactPage() {
     </main>
   );
 }
-

@@ -8,10 +8,10 @@ import {
   CalendarCheck,
   MessageSquare,
   Mail,
-  PhoneCall,
   CheckCircle2,
   ArrowRight,
-  Zap,
+  Globe,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/store';
@@ -71,10 +71,8 @@ const SERVICES = [
 ];
 
 const WHY_US = [
-  { icon: Zap, title: 'No Middleman', description: 'Connect directly with agents or call centers. No recruiter delays, no placement fees.' },
-  { icon: CheckCircle2, title: 'Transparent Pricing', description: 'Free to register. Agents pay 1,000 HTG / quarter only when applying for a job. Call centers pay 3,000 HTG / year only when accessing Job Links. No hidden costs.' },
-  { icon: Headphones, title: 'Diverse Talent Pool', description: 'Agents from Haiti, Jamaica, Trinidad, Nigeria, the Dominican Republic, and across the Caribbean.' },
-  { icon: ArrowRight, title: 'Direct Hiring', description: 'You handle the hiring, training, and management. We just make the introduction.' },
+  { icon: Globe, title: 'Diverse Talent Pool', description: 'Agents from Haiti, Jamaica, Trinidad, Nigeria, the Dominican Republic, and across the Caribbean.' },
+  { icon: ShieldCheck, title: 'Quality Assessed', description: 'Every agent passes a skills assessment before they can apply for a job. You only see qualified candidates.' },
 ];
 
 export default function ServicesPage() {
@@ -94,12 +92,12 @@ export default function ServicesPage() {
             </motion.span>
             <motion.h1 variants={fadeUp} transition={{ duration: 0.5 }}
               className="text-4xl font-bold tracking-tight sm:text-5xl">
-              Call Center Talent, <span className="text-[#16A34A]">Ready to Work</span>
+              Remote Talent, <span className="text-[#16A34A]">Ready to Work</span>
             </motion.h1>
             <motion.p variants={fadeUp} transition={{ duration: 0.5 }}
               className="mt-6 max-w-2xl text-lg leading-relaxed text-white/70">
-              Our registered agents specialize in the roles that call centers need most.
-              Browse the categories below and find the talent that fits your operation.
+              Our registered agents specialize in the roles that businesses need most.
+              Browse the categories below to see the talent we connect you with.
             </motion.p>
           </motion.div>
         </div>
@@ -156,10 +154,10 @@ export default function ServicesPage() {
               A Different Kind of <span className="text-[#16A34A]">Platform</span>
             </motion.h2>
             <motion.p variants={fadeUp} className="mt-4 text-gray-500 max-w-2xl mx-auto">
-              We are not a staffing agency. We are a marketplace that connects talent with opportunity — directly, efficiently, and affordably.
+              We connect skilled remote agents with real job opportunities — assessed, qualified, and ready to work.
             </motion.p>
           </motion.div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
             {WHY_US.map((item) => {
               const Icon = item.icon;
               return (
@@ -181,15 +179,19 @@ export default function ServicesPage() {
       <section className="navy-gradient py-20 sm:py-28">
         <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Ready to Find or Offer Talent?
+            Ready to Get Started?
           </h2>
           <p className="mt-4 text-lg text-white/60">
-            Join hundreds of agents and call centers already on the platform.
+            Browse our open positions and apply with a quick assessment.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Button size="lg" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
+              onClick={() => navigateTo('careers')}>
+              Browse Jobs <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+            <Button size="lg" variant="outline" className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
               onClick={() => navigateTo('register-agent')}>
-              Get Started <ArrowRight className="ml-2 h-4 w-4" />
+              Create Free Account
             </Button>
           </div>
         </div>

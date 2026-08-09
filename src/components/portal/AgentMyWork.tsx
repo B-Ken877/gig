@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import {
-  Briefcase, Calendar, DollarSign, Building2, AlertCircle, RefreshCw,
+  Briefcase, Calendar, DollarSign, AlertCircle, RefreshCw,
   MapPin, Clock, ChevronRight, TrendingUp, CalendarClock,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -26,7 +26,6 @@ export default function AgentMyWork() {
       setLoading(true);
       setError(null);
       try {
-        // Get the agent record first
         const agentRes = await fetch('/api/agents?userId=' + currentUser.id, { headers });
         const agentData = await agentRes.json();
         const me = agentData.id ? agentData : (agentData.agents || []).find((a: any) => a.userId === currentUser.id);
@@ -35,6 +34,7 @@ export default function AgentMyWork() {
         if (me) {
           const [placementsRes, salaryRes] = await Promise.all([
             fetch('/api/placements?agentId=' + me.id, { headers }).then(r => r.json()),
+            // Salary dates API auto-filters to this agent's jobs (server-side).
             fetch('/api/salary-dates', { headers }).then(r => r.json()),
           ]);
           setPlacements(placementsRes.placements || []);
@@ -74,21 +74,24 @@ export default function AgentMyWork() {
   const activePlacements = placements.filter(p => p.status === 'active');
   const pastPlacements = placements.filter(p => p.status !== 'active');
 
-  // Upcoming salary dates (next 3)
   const now = new Date();
   const upcomingSalaries = salaryDates
     .filter(s => new Date(s.payDate) >= now)
-    .slice(0, 3);
+    .sort((a, b) => new Date(a.payDate).getTime() - new Date(b.payDate).getTime());
 
-  // Personal next payday (earliest active placement's nextSalaryDate, fallback to global salary date)
-  const personalNextPayday = activePlacements
-    .map(p => p.nextSalaryDate)
-    .filter(Boolean)
-    .sort((a, b) => new Date(a!).getTime() - new Date(b!).getTime())[0];
+  // Group upcoming salaries by job
+  const salariesByJob: Record<string, { jobTitle: string; dates: SalaryDate[] }> = {};
+  for (const s of upcomingSalaries) {
+    const key = s.jobPostId;
+    if (!salariesByJob[key]) salariesByJob[key] = { jobTitle: (s as any).jobTitle || 'Unknown Job', dates: [] };
+    salariesByJob[key].dates.push(s);
+  }
+
+  // Next payday = earliest upcoming salary date across all the agent's jobs
+  const nextPayday = upcomingSalaries[0];
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h2 className="text-xl font-bold text-gray-900">My Work</h2>
         <p className="text-sm text-gray-500 mt-1">Your active placements, pay schedule, and work history.</p>
@@ -130,11 +133,9 @@ export default function AgentMyWork() {
               <div>
                 <p className="text-sm text-gray-500">Next Payday</p>
                 <p className="text-sm font-bold mt-1">
-                  {personalNextPayday
-                    ? new Date(personalNextPayday).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                    : upcomingSalaries[0]
-                      ? new Date(upcomingSalaries[0].payDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                      : '—'}
+                  {nextPayday
+                    ? new Date(nextPayday.payDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                    : '—'}
                 </p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-amber-50 flex items-center justify-center">
@@ -184,17 +185,12 @@ export default function AgentMyWork() {
                       <div className="flex items-center gap-4 mt-2 text-xs">
                         {p.salary != null && (
                           <span className="flex items-center gap-1 text-[#16A34A] font-semibold">
-                            <DollarSign className="h-3 w-3" />${p.salary.toFixed(2)} {p.jobPost?.payFrequency === 'hourly' ? '/hr' : ''}
+                            <DollarSign className="h-3 w-3" />${p.salary.toFixed(2)}/hr
                           </span>
                         )}
                         {p.startDate && (
                           <span className="flex items-center gap-1 text-gray-500">
                             <Calendar className="h-3 w-3" />Started {new Date(p.startDate).toLocaleDateString()}
-                          </span>
-                        )}
-                        {p.nextSalaryDate && (
-                          <span className="flex items-center gap-1 text-gray-700 font-medium">
-                            <CalendarClock className="h-3 w-3" />Next payday: {new Date(p.nextSalaryDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                           </span>
                         )}
                       </div>
@@ -210,7 +206,7 @@ export default function AgentMyWork() {
         </CardContent>
       </Card>
 
-      {/* Upcoming pay schedule */}
+      {/* Upcoming pay schedule — grouped by job */}
       <Card>
         <CardContent className="p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -220,24 +216,37 @@ export default function AgentMyWork() {
           {upcomingSalaries.length === 0 ? (
             <div className="text-center py-8">
               <CalendarClock className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">No upcoming pay dates scheduled.</p>
+              <p className="text-sm text-gray-500">No upcoming pay dates scheduled for your jobs yet.</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {upcomingSalaries.map(s => (
-                <div key={s.id} className="flex items-center gap-3 p-3 border rounded-lg">
-                  <div className="h-10 w-10 rounded-lg bg-[#16A34A]/10 flex flex-col items-center justify-center">
-                    <span className="text-[10px] font-bold text-[#16A34A] uppercase">{new Date(s.payDate).toLocaleDateString('en-US', { month: 'short' })}</span>
-                    <span className="text-sm font-bold text-[#16A34A]">{new Date(s.payDate).getDate()}</span>
+            <div className="space-y-4">
+              {Object.entries(salariesByJob).map(([jobId, group]) => (
+                <div key={jobId}>
+                  <div className="flex items-center gap-2 mb-2 pb-1 border-b">
+                    <Briefcase className="h-3.5 w-3.5 text-gray-400" />
+                    <h4 className="text-xs font-semibold text-gray-600">{group.jobTitle}</h4>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
-                      {new Date(s.payDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {s.frequency && <Badge variant="outline" className="text-[10px] mr-2">{s.frequency}</Badge>}
-                      {s.description || 'Pay cycle'}
-                    </p>
+                  <div className="space-y-2 ml-5">
+                    {group.dates.slice(0, 3).map(s => (
+                      <div key={s.id} className="flex items-center gap-3 p-2.5 border rounded-lg bg-white">
+                        <div className="h-10 w-10 rounded-lg bg-[#16A34A]/10 flex flex-col items-center justify-center shrink-0">
+                          <span className="text-[10px] font-bold text-[#16A34A] uppercase">{new Date(s.payDate).toLocaleDateString('en-US', { month: 'short' })}</span>
+                          <span className="text-sm font-bold text-[#16A34A]">{new Date(s.payDate).getDate()}</span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">
+                            {new Date(s.payDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <Badge variant="outline" className="text-[10px]">{s.frequency}</Badge>
+                            {s.description && <span className="text-xs text-gray-500">{s.description}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {group.dates.length > 3 && (
+                      <p className="text-xs text-gray-400 ml-1">+{group.dates.length - 3} more date{group.dates.length - 3 !== 1 ? 's' : ''}</p>
+                    )}
                   </div>
                 </div>
               ))}

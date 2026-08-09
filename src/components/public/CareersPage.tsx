@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ArrowRight, ArrowLeft, Share2, Copy, CheckCircle2, MapPin, DollarSign,
-  Clock, Briefcase, Building2, Globe, Search, Filter, Loader2, AlertCircle,
-  CheckCircle, ChevronLeft, X, Sparkles,
+  ArrowRight, Share2, Copy, CheckCircle2, MapPin, DollarSign,
+  Clock, Briefcase, Search, Filter, Loader2, AlertCircle,
+  CheckCircle, X, Sparkles, Calendar,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,15 +17,15 @@ import type { JobPost } from '@/lib/types';
 const fadeUp = { hidden: { opacity: 0, y: 30 }, visible: { opacity: 1, y: 0 } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
 
-const PAY_FREQUENCY_LABEL: Record<string, string> = {
-  'hourly': 'per hour',
-  'weekly': 'per week',
-  'bi-weekly': 'bi-weekly',
-  'monthly': 'per month',
+const PAY_FREQ_TEXT: Record<string, string> = {
+  'hourly': 'Paid hourly',
+  'weekly': 'Paid weekly',
+  'bi-weekly': 'Paid bi-weekly',
+  'monthly': 'Paid monthly',
 };
 
 export default function CareersPage() {
-  const { navigateTo, isAuthenticated, currentUser, setPendingJobId, pendingJobId } = useAppStore();
+  const { navigateTo, isAuthenticated, setPendingJobId } = useAppStore();
   const [jobs, setJobs] = useState<JobPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,13 +33,6 @@ export default function CareersPage() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedJob, setSelectedJob] = useState<JobPost | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  // Read ?job=... from URL on first load (shareable links)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const jobParam = params.get('job');
-    if (jobParam) setPendingJobId(jobParam);
-  }, [setPendingJobId]);
 
   const load = async () => {
     setLoading(true);
@@ -51,10 +44,13 @@ export default function CareersPage() {
       const list: JobPost[] = data.jobPosts || [];
       setJobs(list);
 
-      // If a job was specified via ?job=..., auto-open it
-      const targetId = pendingJobId || new URLSearchParams(window.location.search).get('job');
-      if (targetId) {
-        const target = list.find(j => j.id === targetId);
+      // ONLY auto-open a job if there's a ?job= URL parameter (shared link).
+      // We do NOT use the store's pendingJobId here — that's only for the
+      // agent dashboard after clicking Apply + logging in.
+      const urlParams = new URLSearchParams(window.location.search);
+      const jobParam = urlParams.get('job');
+      if (jobParam) {
+        const target = list.find(j => j.id === jobParam);
         if (target) setSelectedJob(target);
       }
     } catch (err) {
@@ -80,41 +76,45 @@ export default function CareersPage() {
   });
 
   const handleApply = (job: JobPost) => {
+    // Stash the job ID so after login, the agent dashboard auto-opens
+    // the assessment for this specific job.
     setPendingJobId(job.id);
-    // Apply button → login page (with visible register button).
-    // After login, the agent dashboard will detect pendingJobId and prompt
-    // them to start the assessment for that specific job.
     if (!isAuthenticated) {
       navigateTo('login');
     } else {
-      // Already logged in — go to agent dashboard which will surface the
-      // pending-job assessment modal.
       navigateTo('agent-dashboard');
     }
   };
 
-  const handleShare = async (job: JobPost) => {
-    const url = `${window.location.origin}/?job=${job.id}#careers`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: job.jobTitle + ' — Gig Solutions', text: 'Check out this remote job on Gig Solutions', url });
-      } else {
-        await navigator.clipboard.writeText(url);
-        setCopiedId(job.id);
-        setTimeout(() => setCopiedId(null), 2000);
-      }
-    } catch {
-      // user dismissed share sheet — silent
-    }
-  };
-
-  const handleCopyLink = async (job: JobPost) => {
+  // Share = always copy the specific job link to clipboard + show toast.
+  // We do NOT use navigator.share because some browsers share the page URL
+  // instead of the provided URL. Clipboard copy is reliable everywhere.
+  const copyJobLink = async (job: JobPost) => {
     const url = `${window.location.origin}/?job=${job.id}#careers`;
     try {
       await navigator.clipboard.writeText(url);
       setCopiedId(job.id);
       setTimeout(() => setCopiedId(null), 2000);
-    } catch { /* ignore */ }
+      return true;
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = url;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        setCopiedId(job.id);
+        setTimeout(() => setCopiedId(null), 2000);
+        document.body.removeChild(textarea);
+        return true;
+      } catch {
+        document.body.removeChild(textarea);
+        return false;
+      }
+    }
   };
 
   return (
@@ -229,23 +229,26 @@ export default function CareersPage() {
                         )}
                       </div>
                       <button
-                        onClick={() => handleShare(job)}
+                        onClick={() => copyJobLink(job)}
                         className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-[#16A34A] transition-colors"
-                        title="Share job"
+                        title="Copy job link"
                       >
-                        <Share2 className="h-4 w-4" />
+                        {copiedId === job.id ? <CheckCircle className="h-4 w-4 text-[#16A34A]" /> : <Share2 className="h-4 w-4" />}
                       </button>
                     </div>
                     <h3 className="text-lg font-bold text-gray-900 leading-tight">{job.jobTitle}</h3>
-                    <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-gray-500">
-                      <span className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-3 mt-2 text-xs">
+                      <span className="flex items-center gap-1 text-gray-500">
                         <MapPin className="h-3.5 w-3.5" />{job.location || 'Remote'}
                       </span>
                       {job.hourlyRate > 0 && (
                         <span className="flex items-center gap-1 text-[#16A34A] font-semibold">
-                          <DollarSign className="h-3.5 w-3.5" />${job.hourlyRate.toFixed(2)} {PAY_FREQUENCY_LABEL[job.payFrequency] || ''}
+                          <DollarSign className="h-3.5 w-3.5" />{job.hourlyRate.toFixed(2)}/hr
                         </span>
                       )}
+                      <span className="flex items-center gap-1 text-gray-500">
+                        <Calendar className="h-3.5 w-3.5" />{PAY_FREQ_TEXT[job.payFrequency] || 'Paid bi-weekly'}
+                      </span>
                     </div>
                     <p className="text-sm text-gray-600 mt-3 line-clamp-3 flex-1">{job.description}</p>
                     {job.skills && job.skills.length > 0 && (
@@ -279,7 +282,7 @@ export default function CareersPage() {
                         size="sm"
                         variant="ghost"
                         className="px-3"
-                        onClick={() => handleCopyLink(job)}
+                        onClick={() => copyJobLink(job)}
                         title="Copy link"
                       >
                         {copiedId === job.id ? <CheckCircle className="h-4 w-4 text-[#16A34A]" /> : <Copy className="h-4 w-4" />}
@@ -310,8 +313,13 @@ export default function CareersPage() {
               <div className="flex flex-wrap items-center gap-4 text-sm">
                 <span className="flex items-center gap-1.5 text-gray-600"><MapPin className="h-4 w-4 text-gray-400" />{selectedJob.location || 'Remote'}</span>
                 {selectedJob.hourlyRate > 0 && (
-                  <span className="flex items-center gap-1.5 text-[#16A34A] font-semibold"><DollarSign className="h-4 w-4" />${selectedJob.hourlyRate.toFixed(2)} {PAY_FREQUENCY_LABEL[selectedJob.payFrequency] || ''}</span>
+                  <span className="flex items-center gap-1.5 text-[#16A34A] font-semibold">
+                    <DollarSign className="h-4 w-4" />{selectedJob.hourlyRate.toFixed(2)}/hr
+                  </span>
                 )}
+                <span className="flex items-center gap-1.5 text-gray-600">
+                  <Calendar className="h-4 w-4 text-gray-400" />{PAY_FREQ_TEXT[selectedJob.payFrequency] || 'Paid bi-weekly'}
+                </span>
                 {selectedJob.shift && (
                   <span className="flex items-center gap-1.5 text-gray-600"><Clock className="h-4 w-4 text-gray-400" />{selectedJob.shift}</span>
                 )}
@@ -365,13 +373,13 @@ export default function CareersPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => handleShare(selectedJob)}
+                  onClick={() => copyJobLink(selectedJob)}
                 >
-                  <Share2 className="h-4 w-4 mr-2" /> Share
+                  {copiedId === selectedJob.id ? <><CheckCircle className="h-4 w-4 mr-2 text-[#16A34A]" /> Copied</> : <><Share2 className="h-4 w-4 mr-2" /> Share Link</>}
                 </Button>
                 <Button
                   variant="ghost"
-                  onClick={() => handleCopyLink(selectedJob)}
+                  onClick={() => copyJobLink(selectedJob)}
                 >
                   {copiedId === selectedJob.id ? <><CheckCircle className="h-4 w-4 mr-2 text-[#16A34A]" /> Copied</> : <><Copy className="h-4 w-4 mr-2" /> Copy Link</>}
                 </Button>

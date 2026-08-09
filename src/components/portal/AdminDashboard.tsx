@@ -101,33 +101,52 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-6">
       {/* Welcome */}
-      <Card className="bg-gradient-to-r from-[#0B1A2E] to-[#1a2d4a] border-0">
-        <CardContent className="p-6 text-white">
-          <h2 className="text-xl font-bold">Welcome back, {currentUser?.name?.split(' ')[0]}!</h2>
-          <p className="text-sm text-gray-300 mt-1">Here&apos;s what&apos;s happening on the platform today.</p>
+      <Card className="border-0 overflow-hidden">
+        <CardContent className="p-0">
+          <div className="bg-gradient-to-r from-[#0B1A2E] via-[#0f2540] to-[#16325a] px-6 py-5 text-white relative">
+            <div className="absolute top-0 right-0 w-40 h-40 bg-[#16A34A]/10 rounded-full blur-3xl -mr-20 -mt-20" />
+            <div className="relative flex items-center gap-4">
+              <div className="relative">
+                <Avatar className="h-14 w-14 ring-2 ring-[#16A34A]/40 shadow-xl">
+                  {currentUser?.avatar && <AvatarImage src={currentUser.avatar} alt={currentUser?.name || 'User'} />}
+                  <AvatarFallback className="bg-[#16A34A] text-white text-lg font-bold">
+                    {(currentUser?.name || 'A').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="absolute -bottom-1 -right-1 bg-[#16A34A] rounded-full p-1 ring-2 ring-white">
+                  <ShieldCheck className="h-3.5 w-3.5 text-white" />
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold">{currentUser?.name?.split(' ')[0]}</h2>
+                  <span className="px-2 py-0.5 rounded-full bg-[#16A34A]/20 text-[#4ADE80] text-[10px] font-semibold uppercase tracking-wide">Admin</span>
+                </div>
+                <p className="text-sm text-gray-300 mt-0.5">Platform Overview · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {cards.map(c => {
           const Icon = c.icon;
           return (
             <Card key={c.label} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo(c.page)}>
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500">{c.label}</p>
-                    <p className="text-2xl font-bold mt-1">
-                      {c.value}
-                      {c.total != null && c.total !== c.value && (
-                        <span className="text-sm text-gray-400 font-normal"> / {c.total}</span>
-                      )}
-                    </p>
-                  </div>
-                  <div className={`h-10 w-10 rounded-lg ${c.bg} flex items-center justify-center`}>
-                    <Icon className={`h-5 w-5 ${c.color}`} />
-                  </div>
+              <CardContent className="p-3 flex items-center gap-2">
+                <div className={`h-9 w-9 rounded-lg ${c.bg} flex items-center justify-center shrink-0`}>
+                  <Icon className={`h-4 w-4 ${c.color}`} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] text-gray-500">{c.label}</p>
+                  <p className="text-lg font-bold leading-tight">
+                    {c.value}
+                    {c.total != null && c.total !== c.value && (
+                      <span className="text-xs text-gray-400 font-normal"> / {c.total}</span>
+                    )}
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -138,17 +157,17 @@ export default function AdminDashboard() {
       {/* Quick actions */}
       <div>
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Actions</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {actions.map(a => {
             const Icon = a.icon;
             return (
               <Card key={a.label} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo(a.page)}>
-                <CardContent className="p-5">
-                  <div className={`h-10 w-10 rounded-lg ${a.bg} flex items-center justify-center mb-3`}>
+                <CardContent className="p-3 flex flex-col items-center text-center">
+                  <div className={`h-10 w-10 rounded-lg ${a.bg} flex items-center justify-center mb-2`}>
                     <Icon className={`h-5 w-5 ${a.color}`} />
                   </div>
-                  <h3 className="text-sm font-semibold">{a.label}</h3>
-                  <p className="text-xs text-gray-500 mt-1">{a.desc}</p>
+                  <h3 className="text-xs font-semibold">{a.label}</h3>
+                  <p className="text-[10px] text-gray-500 mt-0.5">{a.desc}</p>
                 </CardContent>
               </Card>
             );
