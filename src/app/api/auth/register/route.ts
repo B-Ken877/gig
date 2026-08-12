@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { createNotification } from '@/lib/notifications';
 
 /**
  * POST /api/auth/register
@@ -9,6 +10,9 @@ import bcrypt from 'bcryptjs';
  * center accounts anymore. Registration is FREE — no payment is required
  * to create an account or to apply for a job. The only gate to applying
  * is passing the per-job assessment.
+ *
+ * On registration, a welcome email + in-app notification are sent asking
+ * the agent to verify their identity.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -57,6 +61,26 @@ export async function POST(req: NextRequest) {
       });
     } else {
       await db.agent.create({ data: { userId: user.id } });
+    }
+
+    // ─── Send welcome email + in-app notification ──────────────────────
+    // Asks the new agent to verify their identity so they can apply for jobs.
+    // This uses createNotification which sends 3 things at once:
+    //   1. In-app notification (shows in their notification bell)
+    //   2. Browser push notification (if subscribed)
+    //   3. Email (via Resend) — using the 'welcome' template
+    try {
+      await createNotification({
+        userId: user.id,
+        title: 'Welcome to Gig Solutions! Verify Your Identity',
+        message: 'Welcome to Gig Solutions! To start applying for jobs, please verify your identity. It only takes 3 minutes.',
+        type: 'welcome',
+        pushBody: 'Welcome to Gig Solutions! Please verify your identity to start applying for jobs.',
+        pushUrl: '/#agent-verify-id',
+      });
+    } catch (notifErr) {
+      // Don't fail registration if the notification/email fails
+      console.error('[register] welcome notification failed:', notifErr);
     }
 
     return NextResponse.json({
