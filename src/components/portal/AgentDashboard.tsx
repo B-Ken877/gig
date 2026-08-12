@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useAppStore } from '@/lib/store';
 import VideoAssessmentModal from '@/components/portal/VideoAssessmentModal';
 import type { JobPost, Placement } from '@/lib/types';
@@ -31,6 +32,7 @@ export default function AgentDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assessmentJob, setAssessmentJob] = useState<JobPost | null>(null);
+  const [detailsJob, setDetailsJob] = useState<JobPost | null>(null);
   const [submittingApp, setSubmittingApp] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -84,9 +86,29 @@ export default function AgentDashboard() {
 
   useEffect(() => {
     if (!pendingJobId || jobs.length === 0 || !agent) return;
+    // ─── ID VERIFICATION GATE (for ?job= auto-trigger) ────────────────────
+    // When an agent visits the dashboard with ?job=<id> in the URL (e.g., from
+    // a shared link or notification), this effect auto-opens the assessment
+    // modal. We MUST check verification status here too — otherwise unverified
+    // agents can bypass the handleApply() check entirely.
+    if (idVerificationStatus !== 'verified') {
+      const msg = idVerificationStatus === 'pending'
+        ? 'Your ID verification is under review. You can apply once it is approved (usually 1-2 business days).'
+        : idVerificationStatus === 'rejected'
+        ? 'Your ID verification was not approved. Please resubmit your verification to apply for jobs.'
+        : 'You must verify your identity before applying for jobs. It only takes 3 minutes.';
+      addToast({
+        title: 'Identity Verification Required',
+        description: msg,
+        variant: 'destructive',
+      });
+      setPendingJobId(null);
+      navigateTo('agent-verify-id' as never);
+      return;
+    }
     const target = jobs.find(j => j.id === pendingJobId);
     if (target) setAssessmentJob(target);
-  }, [pendingJobId, jobs, agent]);
+  }, [pendingJobId, jobs, agent, idVerificationStatus, addToast, navigateTo, setPendingJobId]);
 
   const handleApply = (job: JobPost) => {
     if (appliedIds.has(job.id)) {
@@ -379,16 +401,26 @@ export default function AgentDashboard() {
                         </div>
                         <p className="text-xs text-gray-600 mt-2 line-clamp-2">{job.description}</p>
                       </div>
-                      <Button
-                        size="sm"
-                        className={isApplied
-                          ? 'bg-gray-100 text-gray-400 hover:bg-gray-100 text-xs shrink-0 h-8 cursor-default'
-                          : 'bg-[#16A34A] text-white hover:bg-[#16A34A]/90 text-xs shrink-0 h-8'}
-                        onClick={() => !isApplied && handleApply(job)}
-                        disabled={isApplied}
-                      >
-                        {isApplied ? (<><CheckCircle2 className="h-3 w-3 mr-1" />Applied</>) : (<>Apply <ArrowRight className="h-3 w-3 ml-1" /></>)}
-                      </Button>
+                      <div className="flex flex-col gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs h-8 border-gray-300 hover:bg-gray-50 hover:text-gray-900"
+                          onClick={() => setDetailsJob(job)}
+                        >
+                          <FileText className="h-3 w-3 mr-1" />Job Details
+                        </Button>
+                        <Button
+                          size="sm"
+                          className={isApplied
+                            ? 'bg-gray-100 text-gray-400 hover:bg-gray-100 text-xs h-8 cursor-default'
+                            : 'bg-[#16A34A] text-white hover:bg-[#16A34A]/90 text-xs h-8'}
+                          onClick={() => !isApplied && handleApply(job)}
+                          disabled={isApplied}
+                        >
+                          {isApplied ? (<><CheckCircle2 className="h-3 w-3 mr-1" />Applied</>) : (<>Apply <ArrowRight className="h-3 w-3 ml-1" /></>)}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -448,6 +480,102 @@ export default function AgentDashboard() {
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {/* Job Details Modal */}
+      {detailsJob && (
+        <Dialog open={!!detailsJob} onOpenChange={(open) => { if (!open) setDetailsJob(null); }}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+            <DialogHeader className="p-5 pb-3 border-b">
+              <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                {detailsJob.category && <Badge variant="outline" className="text-[10px]">{detailsJob.category}</Badge>}
+                {appliedIds.has(detailsJob.id) && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-medium">
+                    <CheckCircle2 className="h-3 w-3" />Applied
+                  </span>
+                )}
+              </div>
+              <DialogTitle className="text-xl font-bold text-gray-900 leading-tight">{detailsJob.jobTitle}</DialogTitle>
+              <DialogDescription className="sr-only">Full job description, requirements, and skills.</DialogDescription>
+              <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 flex-wrap">
+                <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{detailsJob.location || 'Remote'}</span>
+                {detailsJob.hourlyRate > 0 && <span className="flex items-center gap-1 text-[#16A34A] font-semibold"><DollarSign className="h-3 w-3" />{detailsJob.hourlyRate.toFixed(2)}/hr</span>}
+                <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{PAY_FREQ_TEXT[detailsJob.payFrequency] || 'Paid bi-weekly'}</span>
+                {detailsJob.shift && <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{detailsJob.shift}</span>}
+              </div>
+            </DialogHeader>
+
+            <div className="p-5 overflow-y-auto flex-1 space-y-5">
+              {/* Posted date */}
+              <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
+                <span className="flex items-center gap-1"><Clock className="h-3 w-3" />Posted {new Date(detailsJob.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+              </div>
+
+              {/* Description */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-1.5 flex items-center gap-1.5"><FileText className="h-4 w-4 text-gray-500" />Job Description</h4>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{detailsJob.description}</p>
+              </div>
+
+              {/* Skills */}
+              {detailsJob.skills?.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-1.5 flex items-center gap-1.5"><Briefcase className="h-4 w-4 text-gray-500" />Required Skills</h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {detailsJob.skills.map((s: string, i: number) => (
+                      <Badge key={i} variant="secondary" className="text-xs">{s}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Requirements */}
+              {detailsJob.requirements?.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-1.5 flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-gray-500" />Requirements</h4>
+                  <ul className="space-y-1.5">
+                    {detailsJob.requirements.map((r: string, i: number) => (
+                      <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#16A34A] shrink-0" />
+                        <span>{r}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Assessment note */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs text-amber-800 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>
+                    {detailsJob.assessmentQuestions && detailsJob.assessmentQuestions.length > 0
+                      ? <>You will need to record <strong>{detailsJob.assessmentQuestions.length} short video responses</strong> to assessment questions as part of your application.</>
+                      : <>Assessment questions are still being configured for this job. Please check back later to apply.</>
+                    }
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDetailsJob(null)}>Close</Button>
+              <Button
+                className={appliedIds.has(detailsJob.id)
+                  ? 'bg-gray-200 text-gray-500 hover:bg-gray-200 cursor-default'
+                  : 'bg-[#16A34A] text-white hover:bg-[#16A34A]/90'}
+                disabled={appliedIds.has(detailsJob.id)}
+                onClick={() => { const job = detailsJob; setDetailsJob(null); if (job) handleApply(job); }}
+              >
+                {appliedIds.has(detailsJob.id)
+                  ? (<><CheckCircle2 className="h-4 w-4 mr-1.5" />Applied</>)
+                  : (<>Apply Now <ArrowRight className="h-4 w-4 ml-1.5" /></>)
+                }
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Video Assessment Modal */}

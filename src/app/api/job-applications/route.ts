@@ -103,6 +103,21 @@ export async function POST(req: NextRequest) {
     const agent = await db.agent.findUnique({ where: { userId: auth.userId } });
     if (!agent) return NextResponse.json({ error: 'Agent profile not found' }, { status: 404 });
 
+    // ─── ID VERIFICATION GATE (server-side, authoritative) ────────────────
+    // Only agents whose ID verification status is 'verified' can apply for jobs.
+    // This is the AUTHORITATIVE check — the client-side check in
+    // AgentDashboard.tsx can be bypassed via the ?job= URL auto-trigger or by
+    // calling the API directly. The server MUST enforce this.
+    if (agent.idVerificationStatus !== 'verified') {
+      const msg =
+        agent.idVerificationStatus === 'pending'
+          ? 'Your ID verification is under review. You can apply once it is approved (usually 1-2 business days).'
+          : agent.idVerificationStatus === 'rejected'
+          ? 'Your ID verification was not approved. Please resubmit your verification to apply for jobs.'
+          : 'You must verify your identity before applying for jobs. It only takes 3 minutes.';
+      return NextResponse.json({ error: msg, code: 'ID_VERIFICATION_REQUIRED' }, { status: 403 });
+    }
+
     const job = await db.jobPost.findUnique({ where: { id: jobPostId } });
     if (!job || !job.isActive) return NextResponse.json({ error: 'Job not available' }, { status: 404 });
 

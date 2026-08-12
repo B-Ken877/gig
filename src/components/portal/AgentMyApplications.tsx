@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import {
   ClipboardList, AlertCircle, RefreshCw, MapPin, Clock, DollarSign,
-  CheckCircle2, XCircle, Eye, ArrowRight, Video, Calendar,
+  CheckCircle2, XCircle, Eye, ArrowRight, Video, Calendar, CalendarClock,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import type { JobApplication } from '@/lib/types';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
   applied: { label: 'Under Review', color: 'text-blue-700', bg: 'bg-blue-100', icon: Clock },
+  interview_scheduled: { label: 'Interview Scheduled', color: 'text-amber-700', bg: 'bg-amber-100', icon: CalendarClock },
   hired: { label: 'Hired', color: 'text-green-700', bg: 'bg-green-100', icon: CheckCircle2 },
   rejected: { label: 'Not Selected', color: 'text-red-700', bg: 'bg-red-100', icon: XCircle },
 };
@@ -113,6 +114,17 @@ export default function AgentMyApplications() {
                       {(app.videoCount || 0) > 0 && (
                         <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-[10px] font-medium">
                           <Video className="h-3 w-3" />{app.videoCount} video response{app.videoCount !== 1 ? 's' : ''} submitted
+                        </div>
+                      )}
+                      {status.label === 'Interview Scheduled' && (
+                        <div className="mt-3 flex items-center gap-2 p-2 rounded-md bg-amber-50 border border-amber-200">
+                          <CalendarClock className="h-4 w-4 text-amber-600 shrink-0" />
+                          <p className="text-xs text-amber-800 flex-1">
+                            An interview has been scheduled for this application. Check your messages for the full details (date, time, location).
+                          </p>
+                          <Button size="sm" variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-100 h-7 text-xs" onClick={() => navigateTo('messages')}>
+                            View Message <ArrowRight className="h-3 w-3 ml-1" />
+                          </Button>
                         </div>
                       )}
                     </div>

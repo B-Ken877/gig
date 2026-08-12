@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import {
   AlertCircle, RefreshCw, Briefcase, ClipboardList, CheckCircle2, XCircle,
   DollarSign, Calendar, MapPin, User, Clock, ChevronRight, Video, ArrowLeft,
-  Play, Mail,
+  Play, Mail, CalendarClock, MessageSquare,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,8 +12,13 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { useAppStore } from '@/lib/store';
 import type { JobApplication, JobPost } from '@/lib/types';
 
@@ -31,6 +36,16 @@ export default function AdminPlacements() {
   const [hireDialog, setHireDialog] = useState<JobApplication | null>(null);
   const [hireForm, setHireForm] = useState({ salary: '', startDate: '', nextSalaryDate: '' });
   const [actionLoading, setActionLoading] = useState(false);
+  // Confirmation dialogs (so admin doesn't accidentally hire/reject)
+  const [hireConfirmApp, setHireConfirmApp] = useState<JobApplication | null>(null);
+  const [rejectConfirmApp, setRejectConfirmApp] = useState<JobApplication | null>(null);
+  // Schedule-interview modal
+  const [scheduleApp, setScheduleApp] = useState<JobApplication | null>(null);
+  const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
+  const [scheduleTime, setScheduleTime] = useState('10:00');
+  const [scheduleTimezone, setScheduleTimezone] = useState('America/Port-au-Prince');
+  const [scheduleLocation, setScheduleLocation] = useState('');
+  const [scheduleNotes, setScheduleNotes] = useState('');
 
   const headers = currentUser
     ? { 'X-User-Id': currentUser.id, 'X-User-Role': 'admin' }
@@ -89,12 +104,19 @@ export default function AdminPlacements() {
   };
 
   const handleHireClick = (app: JobApplication) => {
+    // Open the confirmation dialog first — user must explicitly confirm.
+    setHireConfirmApp(app);
+  };
+
+  const handleConfirmHireConfirmed = (app: JobApplication) => {
+    // User confirmed in the AlertDialog. Now open the hire form dialog.
     setHireForm({
       salary: app.jobPost?.hourlyRate ? String(app.jobPost.hourlyRate) : '',
       startDate: new Date().toISOString().split('T')[0],
       nextSalaryDate: '',
     });
     setHireDialog(app);
+    setHireConfirmApp(null);
   };
 
   const handleConfirmHire = async () => {
@@ -126,8 +148,12 @@ export default function AdminPlacements() {
     }
   };
 
-  const handleReject = async (app: JobApplication) => {
-    if (!confirm('Reject this application? The agent will be notified.')) return;
+  const handleReject = (app: JobApplication) => {
+    // Open the confirmation dialog first.
+    setRejectConfirmApp(app);
+  };
+
+  const handleConfirmRejectConfirmed = async (app: JobApplication) => {
     setActionLoading(true);
     try {
       const res = await fetch(`/api/job-applications/${app.id}`, {
@@ -138,6 +164,67 @@ export default function AdminPlacements() {
       if (res.ok) {
         addToast({ title: 'Application rejected', variant: 'success' });
         if (selectedJob) loadApplicants(selectedJob.id);
+      } else {
+        addToast({ title: 'Failed to reject', variant: 'destructive' });
+      }
+    } catch {
+      addToast({ title: 'Network error', variant: 'destructive' });
+    } finally {
+      setActionLoading(false);
+      setRejectConfirmApp(null);
+    }
+  };
+
+  // ─── Schedule Interview ──────────────────────────────────────────────────
+  const openScheduleModal = (app: JobApplication) => {
+    setScheduleApp(app);
+    // Default: tomorrow at 10:00 AM
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(10, 0, 0, 0);
+    setScheduleDate(tomorrow);
+    setScheduleTime('10:00');
+    setScheduleTimezone('America/Port-au-Prince');
+    setScheduleLocation('');
+    setScheduleNotes('');
+  };
+
+  const handleConfirmSchedule = async () => {
+    if (!scheduleApp || !scheduleDate) return;
+    // Combine the picked date with the picked time
+    const when = new Date(scheduleDate);
+    const [hours, minutes] = scheduleTime.split(':').map(n => parseInt(n, 10));
+    if (!isNaN(hours) && !isNaN(minutes)) {
+      when.setHours(hours, minutes, 0, 0);
+    }
+    if (when.getTime() < Date.now()) {
+      addToast({ title: 'Invalid time', description: 'Please pick a future date and time.', variant: 'destructive' });
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const res = await fetch('/api/interviews', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          applicationId: scheduleApp.id,
+          scheduledAt: when.toISOString(),
+          timezone: scheduleTimezone,
+          location: scheduleLocation || undefined,
+          notes: scheduleNotes || undefined,
+        }),
+      });
+      if (res.ok) {
+        addToast({
+          title: 'Interview Scheduled!',
+          description: 'An automated message has been sent to the agent with the interview details.',
+          variant: 'success',
+        });
+        setScheduleApp(null);
+        if (selectedJob) loadApplicants(selectedJob.id);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        addToast({ title: 'Failed to schedule', description: data.error || 'Please try again', variant: 'destructive' });
       }
     } catch {
       addToast({ title: 'Network error', variant: 'destructive' });
@@ -159,10 +246,193 @@ export default function AdminPlacements() {
     );
   }
 
+  // ─── Shared dialogs (rendered in every view so the buttons work) ────────
+  // These must be mounted in the React tree at all times so that when an
+  // admin clicks "Schedule Interview" / "Hire" / "Reject" on the applicants
+  // list, the corresponding dialog actually appears.
+  const dialogs = (
+    <>
+      <Dialog open={!!hireDialog} onOpenChange={(o) => { if (!o) setHireDialog(null); }}>
+        <DialogContent className="max-w-md z-[200]">
+          <DialogHeader>
+            <DialogTitle>Hire {hireDialog?.agent?.name || 'Agent'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+              <p className="text-sm font-medium text-gray-900">{hireDialog?.jobPost?.jobTitle}</p>
+              <p className="text-xs text-gray-500 mt-0.5">The agent will be notified: &quot;Congratulations, your application has been approved, and you&apos;ve been hired for the job.&quot;</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Salary ($/hr)</Label>
+              <Input type="number" step="0.01" value={hireForm.salary} onChange={e => setHireForm(f => ({ ...f, salary: e.target.value }))} placeholder="6.50" />
+            </div>
+            <div className="space-y-2">
+              <Label>Start Date</Label>
+              <Input type="date" value={hireForm.startDate} onChange={e => setHireForm(f => ({ ...f, startDate: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Next Salary Date (optional)</Label>
+              <Input type="date" value={hireForm.nextSalaryDate} onChange={e => setHireForm(f => ({ ...f, nextSalaryDate: e.target.value }))} />
+            </div>
+            <Button onClick={handleConfirmHire} disabled={actionLoading} className="w-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90">
+              {actionLoading ? 'Hiring...' : <><CheckCircle2 className="h-4 w-4 mr-2" />Confirm Hire</>}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Hire Confirmation Dialog ─── */}
+      <AlertDialog open={!!hireConfirmApp} onOpenChange={(o) => { if (!o) setHireConfirmApp(null); }}>
+        <AlertDialogContent className="z-[200]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hire {hireConfirmApp?.agent?.name || 'this agent'}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark the application as hired, create a placement, and notify the agent immediately.
+              The agent will see this as a final decision — please make sure you&apos;ve reviewed the assessment videos.
+              You can still reverse this later, but the agent will already have received a notification.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
+              onClick={() => hireConfirmApp && handleConfirmHireConfirmed(hireConfirmApp)}
+            >
+              Yes, Hire
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Reject Confirmation Dialog ─── */}
+      <AlertDialog open={!!rejectConfirmApp} onOpenChange={(o) => { if (!o) setRejectConfirmApp(null); }}>
+        <AlertDialogContent className="z-[200]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject {rejectConfirmApp?.agent?.name || 'this application'}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark the application as rejected and notify the agent. The agent will no longer be
+              considered for this position. Are you sure you want to do this?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-700"
+              onClick={() => rejectConfirmApp && handleConfirmRejectConfirmed(rejectConfirmApp)}
+              disabled={actionLoading}
+            >
+              {actionLoading ? 'Rejecting...' : 'Yes, Reject'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Schedule Interview Modal ─── */}
+      <Dialog open={!!scheduleApp} onOpenChange={(o) => { if (!o) setScheduleApp(null); }}>
+        <DialogContent className="sm:max-w-md z-[200]">
+          <DialogHeader>
+            <DialogTitle>Schedule Interview</DialogTitle>
+            <DialogDescription>
+              Pick a date and time to interview {scheduleApp?.agent?.name || 'this agent'} for {scheduleApp?.jobPost?.jobTitle || 'the position'}. An automated message with the details will be sent to the agent, and they will be notified.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+            {/* Date picker */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Date</Label>
+              <div className="rounded-lg border flex justify-center p-2">
+                <CalendarPicker
+                  mode="single"
+                  selected={scheduleDate}
+                  onSelect={setScheduleDate}
+                  disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                  initialFocus
+                />
+              </div>
+            </div>
+
+            {/* Time picker */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Time</Label>
+              <Input
+                type="time"
+                value={scheduleTime}
+                onChange={e => setScheduleTime(e.target.value)}
+              />
+            </div>
+
+            {/* Timezone */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Timezone</Label>
+              <Input
+                type="text"
+                value={scheduleTimezone}
+                onChange={e => setScheduleTimezone(e.target.value)}
+                placeholder="America/Port-au-Prince"
+              />
+              <p className="text-xs text-gray-500">This is shown to the agent as a hint for their local time.</p>
+            </div>
+
+            {/* Location (optional) */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Location / Meeting Link (optional)</Label>
+              <Input
+                type="text"
+                value={scheduleLocation}
+                onChange={e => setScheduleLocation(e.target.value)}
+                placeholder="Zoom link, Google Meet, office address, etc."
+              />
+            </div>
+
+            {/* Notes (optional) */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Notes (optional)</Label>
+              <textarea
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                rows={3}
+                value={scheduleNotes}
+                onChange={e => setScheduleNotes(e.target.value)}
+                placeholder="Anything specific you want the agent to prepare for the interview..."
+              />
+            </div>
+
+            {/* Preview of the message that will be sent */}
+            {scheduleDate && (
+              <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                <p className="text-xs font-medium text-blue-900 mb-1 flex items-center gap-1">
+                  <MessageSquare className="h-3 w-3" />Message preview (sent to agent):
+                </p>
+                <p className="text-xs text-blue-800 whitespace-pre-wrap">
+                  Congratulations! After reviewing your application for &quot;{scheduleApp?.jobPost?.jobTitle || 'the position'}&quot;, we would like to schedule an interview with you.
+                  {'\n\n'}📅 {scheduleDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} at {scheduleTime}
+                  {scheduleTimezone ? ` (${scheduleTimezone})` : ''}
+                  {scheduleLocation && `\n📍 ${scheduleLocation}`}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button variant="outline" onClick={() => setScheduleApp(null)}>Cancel</Button>
+            <Button
+              className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90"
+              onClick={handleConfirmSchedule}
+              disabled={actionLoading || !scheduleDate}
+            >
+              {actionLoading ? 'Scheduling...' : <><CalendarClock className="h-4 w-4 mr-2" />Confirm Interview</>}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+
   // ─── VIEW: JOBS LIST ─────────────────────────────────────────────────────
   if (view === 'jobs') {
     const jobsWithApps = jobs.filter(j => (j._count?.applications || 0) > 0);
     return (
+      <>
       <div className="space-y-6">
         <div>
           <h2 className="text-lg font-semibold">Applications</h2>
@@ -223,12 +493,15 @@ export default function AdminPlacements() {
           </div>
         )}
       </div>
+      {dialogs}
+      </>
     );
   }
 
   // ─── VIEW: APPLICANTS LIST ───────────────────────────────────────────────
   if (view === 'applicants' && selectedJob) {
     return (
+      <>
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-1" />Back to Jobs</Button>
@@ -249,51 +522,95 @@ export default function AdminPlacements() {
           <div className="space-y-3">
             {applications.map(app => {
               const status = app.status;
-              const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
-                applied: { label: 'Pending Review', color: 'text-blue-700', bg: 'bg-blue-100' },
-                hired: { label: 'Hired', color: 'text-green-700', bg: 'bg-green-100' },
-                rejected: { label: 'Rejected', color: 'text-red-700', bg: 'bg-red-100' },
+              const statusConfig: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+                applied: { label: 'Pending Review', color: 'text-blue-700', bg: 'bg-blue-100', icon: Clock },
+                interview_scheduled: { label: 'Interview Scheduled', color: 'text-amber-700', bg: 'bg-amber-100', icon: CalendarClock },
+                hired: { label: 'Hired', color: 'text-green-700', bg: 'bg-green-100', icon: CheckCircle2 },
+                rejected: { label: 'Rejected', color: 'text-red-700', bg: 'bg-red-100', icon: XCircle },
               };
               const sc = statusConfig[status] || statusConfig.applied;
+              const StatusIcon = sc.icon;
               return (
-                <Card key={app.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleApplicantClick(app)}>
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <Avatar className="h-10 w-10">
+                <Card key={app.id} className="hover:shadow-md transition-shadow overflow-hidden">
+                  <CardContent className="p-4 sm:p-5">
+                    {/* Top row: avatar + name + status badge */}
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleApplicantClick(app); }}
+                        className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40 cursor-pointer"
+                        title="View videos and details"
+                      >
+                        <Avatar className="h-11 w-11">
                           {app.agent?.avatar && <AvatarImage src={app.agent.avatar} alt={app.agent?.name || 'Agent'} />}
                           <AvatarFallback className="bg-[#16A34A] text-white text-xs font-bold">
                             {(app.agent?.name || 'A').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold text-gray-900">{app.agent?.name || 'Agent'}</h3>
-                            <Badge variant="secondary" className={`text-[10px] uppercase ${sc.bg} ${sc.color}`}>{sc.label}</Badge>
-                          </div>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
-                            {app.agent?.country && <span><MapPin className="h-3 w-3 inline mr-0.5" />{app.agent.country}</span>}
-                            {app.agent?.experience != null && <span>{app.agent.experience} yr exp</span>}
-                            <span><Video className="h-3 w-3 inline mr-0.5" />{app.videoCount || 0} video responses</span>
-                            <span><Clock className="h-3 w-3 inline mr-0.5" />Applied {new Date(app.createdAt).toLocaleDateString()}</span>
-                          </div>
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleApplicantClick(app); }}
+                            className="font-semibold text-gray-900 hover:text-[#16A34A] transition-colors text-left truncate"
+                            title="View videos and details"
+                          >
+                            {app.agent?.name || 'Agent'}
+                          </button>
+                          <Badge variant="secondary" className={`text-[9px] uppercase tracking-wide ${sc.bg} ${sc.color}`}>
+                            <StatusIcon className="h-2.5 w-2.5 mr-0.5" />{sc.label}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-gray-500 flex-wrap">
+                          {app.agent?.country && <span className="inline-flex items-center gap-0.5"><MapPin className="h-3 w-3" />{app.agent.country}</span>}
+                          {app.agent?.experience != null && <span className="inline-flex items-center gap-0.5"><Briefcase className="h-3 w-3" />{app.agent.experience} yr exp</span>}
+                          <span className="inline-flex items-center gap-0.5"><Video className="h-3 w-3" />{app.videoCount || 0} videos</span>
+                          <span className="inline-flex items-center gap-0.5"><Clock className="h-3 w-3" />{new Date(app.createdAt).toLocaleDateString()}</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
-                        {status === 'applied' && (
-                          <>
-                            <Button size="sm" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90" onClick={() => handleHireClick(app)}>
-                              <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Hire
-                            </Button>
-                            <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={() => handleReject(app)}>
-                              <XCircle className="h-3.5 w-3.5 mr-1" />Reject
-                            </Button>
-                          </>
-                        )}
-                        <Button size="sm" variant="ghost" onClick={() => handleApplicantClick(app)}>
-                          <Play className="h-3.5 w-3.5 mr-1" />View Videos
-                        </Button>
-                      </div>
+                    </div>
+
+                    {/* Action buttons row — separate, full-width, well-spaced */}
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100" onClick={e => e.stopPropagation()}>
+                      {(status === 'applied' || status === 'interview_scheduled') && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 h-9 border-amber-300 text-amber-700 hover:bg-amber-50 text-xs"
+                            onClick={() => openScheduleModal(app)}
+                          >
+                            <CalendarClock className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                            <span className="truncate">{status === 'interview_scheduled' ? 'Reschedule' : 'Schedule Interview'}</span>
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="flex-1 h-9 bg-[#16A34A] text-white hover:bg-[#16A34A]/90 text-xs"
+                            onClick={() => handleHireClick(app)}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                            <span className="truncate">Hire</span>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 h-9 text-red-600 border-red-300 hover:bg-red-50 text-xs"
+                            onClick={() => handleReject(app)}
+                          >
+                            <XCircle className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                            <span className="truncate">Reject</span>
+                          </Button>
+                        </>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-9 text-gray-700 hover:bg-gray-100 text-xs"
+                        onClick={() => handleApplicantClick(app)}
+                      >
+                        <Play className="h-3.5 w-3.5 mr-1.5" />View Videos
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -302,6 +619,8 @@ export default function AdminPlacements() {
           </div>
         )}
       </div>
+      {dialogs}
+      </>
     );
   }
 
@@ -310,6 +629,7 @@ export default function AdminPlacements() {
     const videos = selectedApp.videoResponses || [];
     const status = selectedApp.status;
     return (
+      <>
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-1" />Back to Applicants</Button>
@@ -341,6 +661,23 @@ export default function AdminPlacements() {
               </div>
               {status === 'applied' && (
                 <div className="flex flex-col gap-2 shrink-0">
+                  <Button variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50" onClick={() => openScheduleModal(selectedApp)} disabled={actionLoading}>
+                    <CalendarClock className="h-4 w-4 mr-2" />Schedule Interview
+                  </Button>
+                  <Button className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90" onClick={() => handleHireClick(selectedApp)} disabled={actionLoading}>
+                    <CheckCircle2 className="h-4 w-4 mr-2" />Hire Agent
+                  </Button>
+                  <Button variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" onClick={() => handleReject(selectedApp)} disabled={actionLoading}>
+                    <XCircle className="h-4 w-4 mr-2" />Reject
+                  </Button>
+                </div>
+              )}
+              {status === 'interview_scheduled' && (
+                <div className="flex flex-col gap-2 shrink-0">
+                  <Badge className="bg-amber-100 text-amber-700 text-xs uppercase">Interview Scheduled</Badge>
+                  <Button variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50" onClick={() => openScheduleModal(selectedApp)} disabled={actionLoading}>
+                    <CalendarClock className="h-4 w-4 mr-2" />Reschedule Interview
+                  </Button>
                   <Button className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90" onClick={() => handleHireClick(selectedApp)} disabled={actionLoading}>
                     <CheckCircle2 className="h-4 w-4 mr-2" />Hire Agent
                   </Button>
@@ -387,38 +724,8 @@ export default function AdminPlacements() {
           )}
         </div>
       </div>
+      {dialogs}
+      </>
     );
   }
-
-  // Hire dialog
-  return (
-    <Dialog open={!!hireDialog} onOpenChange={(o) => { if (!o) setHireDialog(null); }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Hire {hireDialog?.agent?.name || 'Agent'}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="p-3 rounded-lg bg-green-50 border border-green-200">
-            <p className="text-sm font-medium text-gray-900">{hireDialog?.jobPost?.jobTitle}</p>
-            <p className="text-xs text-gray-500 mt-0.5">The agent will be notified: &quot;Congratulations, your application has been approved, and you&apos;ve been hired for the job.&quot;</p>
-          </div>
-          <div className="space-y-2">
-            <Label>Salary ($/hr)</Label>
-            <Input type="number" step="0.01" value={hireForm.salary} onChange={e => setHireForm(f => ({ ...f, salary: e.target.value }))} placeholder="6.50" />
-          </div>
-          <div className="space-y-2">
-            <Label>Start Date</Label>
-            <Input type="date" value={hireForm.startDate} onChange={e => setHireForm(f => ({ ...f, startDate: e.target.value }))} />
-          </div>
-          <div className="space-y-2">
-            <Label>Next Salary Date (optional)</Label>
-            <Input type="date" value={hireForm.nextSalaryDate} onChange={e => setHireForm(f => ({ ...f, nextSalaryDate: e.target.value }))} />
-          </div>
-          <Button onClick={handleConfirmHire} disabled={actionLoading} className="w-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90">
-            {actionLoading ? 'Hiring...' : <><CheckCircle2 className="h-4 w-4 mr-2" />Confirm Hire</>}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
 }

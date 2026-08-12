@@ -35,6 +35,9 @@ export async function GET(req: NextRequest) {
           id: m.id, conversationId: m.conversationId, senderId: m.senderId,
           senderRole: m.senderRole, content: m.content, isRead: m.isRead,
           createdAt: m.createdAt.toISOString(),
+          editedAt: m.editedAt ? m.editedAt.toISOString() : null,
+          deletedAt: m.deletedAt ? m.deletedAt.toISOString() : null,
+          deletedBy: m.deletedBy,
         })),
       });
     }

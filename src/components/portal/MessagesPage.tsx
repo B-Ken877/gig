@@ -37,6 +37,11 @@ import {
   UserCog,
   Building2,
   DollarSign,
+  Edit2,
+  Trash2,
+  Check,
+  X,
+  MoreVertical,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -90,6 +95,9 @@ interface Message {
   isRead: boolean;
   createdAt: string;
   updatedAt: string;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  deletedBy?: string | null;
 }
 
 interface SearchableUser {
@@ -219,6 +227,21 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+// Admin users are displayed as the company name "Gig Solutions" across the
+// messaging UI, and their profile picture/name are NOT clickable (no profile
+// modal is opened for admin conversations).
+const ADMIN_DISPLAY_NAME = 'Gig Solutions';
+
+function displayUserName(user: { name?: string | null; role?: string | null } | null | undefined): string {
+  if (!user) return 'Unknown';
+  if (user.role === 'admin') return ADMIN_DISPLAY_NAME;
+  return user.name || 'Unknown';
+}
+
+function canViewProfile(user: { role?: string | null } | null | undefined): boolean {
+  return !!user && user.role !== 'admin';
+}
+
 // ──────────────────────────────────────────────────────────────
 // Skeleton loaders
 // ──────────────────────────────────────────────────────────────
@@ -329,8 +352,8 @@ function NewConversationDialog({
       const q = search.toLowerCase();
       result = result.filter(
         (u) => {
-          // Search against the display name (company name for clients) and email
-          const dn = (u.displayName || u.name || '').toLowerCase();
+          // Search against the display name (company name for clients, "Gig Solutions" for admin) and email
+          const dn = (u.role === 'admin' ? ADMIN_DISPLAY_NAME : (u.displayName || u.name || '')).toLowerCase();
           return dn.includes(q) || u.email.toLowerCase().includes(q);
         },
       );
@@ -426,9 +449,12 @@ function NewConversationDialog({
             <div className="space-y-0.5 p-1">
               {filtered.map((user) => {
                 const RoleIcon = ROLE_ICONS[user.role] || Users;
-                const userDisplayName = user.displayName || (user.role === 'client' && user.companyName ? user.companyName : user.name);
+                const userDisplayName = user.role === 'admin'
+                  ? ADMIN_DISPLAY_NAME
+                  : (user.displayName || (user.role === 'client' && user.companyName ? user.companyName : user.name));
                 const userTiers: VerificationTier[] = (user.verificationTiers || []) as VerificationTier[];
                 const userTopTier = topVerificationTier(userTiers);
+                const userCanViewProfile = user.role !== 'admin';
                 return (
                   <div
                     key={user.id}
@@ -441,9 +467,14 @@ function NewConversationDialog({
                   >
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); onShowProfile?.(user.id); }}
-                      className="relative shrink-0 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-                      title="View full profile"
+                      onClick={(e) => { e.stopPropagation(); if (userCanViewProfile) onShowProfile?.(user.id); }}
+                      disabled={!userCanViewProfile}
+                      className={cn(
+                        'relative shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40',
+                        userCanViewProfile ? 'cursor-pointer' : 'cursor-default',
+                      )}
+                      title={userCanViewProfile ? 'View full profile' : undefined}
+                      aria-disabled={!userCanViewProfile}
                     >
                       <Avatar className="h-9 w-9">
                         {user.avatar && <AvatarImage src={user.avatar} alt={userDisplayName} />}
@@ -459,14 +490,20 @@ function NewConversationDialog({
                     </button>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); onShowProfile?.(user.id); }}
-                          className="truncate text-sm font-medium text-gray-900 hover:text-[#16A34A] hover:underline cursor-pointer"
-                          title="View full profile"
-                        >
-                          {userDisplayName}
-                        </button>
+                        {userCanViewProfile ? (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onShowProfile?.(user.id); }}
+                            className="truncate text-sm font-medium text-gray-900 hover:text-[#16A34A] hover:underline cursor-pointer"
+                            title="View full profile"
+                          >
+                            {userDisplayName}
+                          </button>
+                        ) : (
+                          <span className="truncate text-sm font-medium text-gray-900">
+                            {userDisplayName}
+                          </span>
+                        )}
                         <Badge className={cn('shrink-0 text-[10px] px-1.5 py-0 h-4 font-medium', ROLE_COLORS[user.role] || 'bg-gray-100 text-gray-600')}>
                           <RoleIcon className="h-2.5 w-2.5 mr-0.5" />
                           {ROLE_LABELS[user.role] || user.role}
@@ -494,29 +531,167 @@ interface MessageBubbleProps {
   isOwn: boolean;
   otherUser: OtherUser;
   onShowProfile?: (userId: string) => void;
+  onEdit?: (messageId: string, newContent: string) => Promise<void>;
+  onDelete?: (messageId: string) => Promise<void>;
 }
 
-function MessageBubble({ message, isOwn, otherUser, onShowProfile }: MessageBubbleProps) {
+function MessageBubble({ message, isOwn, otherUser, onShowProfile, onEdit, onDelete }: MessageBubbleProps) {
   const otherTiers: VerificationTier[] = (otherUser.verificationTiers || []) as VerificationTier[];
   const otherTopTier = topVerificationTier(otherTiers);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(message.content);
+  const [editLoading, setEditLoading] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const isDeleted = !!message.deletedAt;
+  const isEdited = !!message.editedAt && !isDeleted;
+
+  // Close menu when clicking outside (works for both mouse + touch)
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [menuOpen]);
+
+  // ─── Long-press handlers (for touch devices — WhatsApp-style) ──────────
+  // Long-pressing a message (500ms) opens the action menu, just like the ⋯
+  // button does. This is the primary interaction on mobile.
+  const longPressDelay = 500;
+  const handleTouchStart = () => {
+    if (isDeleted || isEditing) return;
+    longPressTriggeredRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      setMenuOpen(true);
+      // Haptic feedback if available
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try { navigator.vibrate(20); } catch { /* ignore */ }
+      }
+    }, longPressDelay);
+  };
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+  const handleTouchMove = () => {
+    // Cancel long-press if the user is scrolling
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  // Cleanup long-press timer on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Focus + auto-resize textarea when entering edit mode
+  useEffect(() => {
+    if (isEditing && editTextareaRef.current) {
+      editTextareaRef.current.focus();
+      editTextareaRef.current.style.height = 'auto';
+      editTextareaRef.current.style.height = editTextareaRef.current.scrollHeight + 'px';
+    }
+  }, [isEditing]);
+
+  const startEdit = () => {
+    setEditValue(message.content);
+    setIsEditing(true);
+    setMenuOpen(false);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditValue(message.content);
+  };
+
+  const saveEdit = async () => {
+    const trimmed = editValue.trim();
+    if (!trimmed || trimmed === message.content) {
+      setIsEditing(false);
+      return;
+    }
+    setEditLoading(true);
+    try {
+      await onEdit?.(message.id, trimmed);
+      setIsEditing(false);
+    } catch {
+      // keep in edit mode on error so user can retry
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    setDeleteLoading(true);
+    try {
+      await onDelete?.(message.id);
+      setDeleteConfirmOpen(false);
+    } catch {
+      // keep dialog open on error
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      saveEdit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEdit();
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
-      className={cn('flex gap-2', isOwn ? 'flex-row-reverse' : 'flex-row')}
+      className={cn('flex gap-2 group relative', isOwn ? 'flex-row-reverse' : 'flex-row')}
+      onTouchStart={isOwn && !isDeleted ? handleTouchStart : undefined}
+      onTouchEnd={isOwn && !isDeleted ? handleTouchEnd : undefined}
+      onTouchMove={isOwn && !isDeleted ? handleTouchMove : undefined}
     >
       {!isOwn && (
         <button
           type="button"
-          onClick={() => onShowProfile?.((otherUser as any).id)}
-          className="relative mt-auto shrink-0 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-          title="View full profile"
+          onClick={() => { if (canViewProfile(otherUser)) onShowProfile?.((otherUser as any).id); }}
+          disabled={!canViewProfile(otherUser)}
+          className={cn(
+            'relative mt-auto shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40',
+            canViewProfile(otherUser) ? 'cursor-pointer' : 'cursor-default',
+          )}
+          title={canViewProfile(otherUser) ? 'View full profile' : undefined}
+          aria-disabled={!canViewProfile(otherUser)}
         >
           <Avatar className="h-8 w-8">
             {otherUser.avatar && <AvatarImage src={otherUser.avatar} />}
             <AvatarFallback className="bg-gray-200 text-gray-600 text-xs font-medium">
-              {getInitials(otherUser.name)}
+              {getInitials(displayUserName(otherUser))}
             </AvatarFallback>
           </Avatar>
           {otherTopTier && (
@@ -529,14 +704,14 @@ function MessageBubble({ message, isOwn, otherUser, onShowProfile }: MessageBubb
 
       <div
         className={cn(
-          'max-w-[75%] sm:max-w-[65%]',
+          'max-w-[75%] sm:max-w-[65%] relative',
           isOwn ? 'items-end' : 'items-start',
         )}
       >
         {!isOwn && (
           <div className="mb-1 flex items-center gap-1.5 px-1">
             <span className="text-xs font-medium text-gray-500">
-              {otherUser.name}
+              {displayUserName(otherUser)}
             </span>
             <Badge className={cn('text-[10px] px-1.5 py-0 h-3.5 font-medium leading-none', ROLE_COLORS[otherUser.role] || 'bg-gray-100 text-gray-600')}>
               {ROLE_LABELS[otherUser.role] || otherUser.role}
@@ -544,29 +719,207 @@ function MessageBubble({ message, isOwn, otherUser, onShowProfile }: MessageBubb
           </div>
         )}
 
-        <div
-          className={cn(
-            'rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words',
-            isOwn
-              ? 'rounded-br-md bg-green-500 text-white'
-              : 'rounded-bl-md bg-gray-100 text-gray-900',
-          )}
-        >
-          {message.content}
-        </div>
+        {/* ─── Edit mode ─── */}
+        {isEditing ? (
+          <div className={cn('rounded-2xl border-2 p-2', isOwn ? 'border-green-400 bg-white' : 'border-gray-300 bg-white')}>
+            <textarea
+              ref={editTextareaRef}
+              value={editValue}
+              onChange={e => {
+                setEditValue(e.target.value);
+                // auto-resize
+                e.target.style.height = 'auto';
+                e.target.style.height = e.target.scrollHeight + 'px';
+              }}
+              onKeyDown={handleEditKeyDown}
+              rows={1}
+              className="w-full resize-none bg-transparent text-sm text-gray-900 focus:outline-none placeholder:text-gray-400"
+              placeholder="Edit your message..."
+              style={{ minHeight: '32px', maxHeight: '200px' }}
+              disabled={editLoading}
+            />
+            <div className="flex items-center justify-between gap-1 mt-1 pt-1 border-t border-gray-100">
+              <span className="text-[10px] text-gray-400">Esc to cancel · Enter to save</span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  disabled={editLoading}
+                  className="h-7 w-7 inline-flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
+                  title="Cancel"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={saveEdit}
+                  disabled={editLoading || !editValue.trim() || editValue.trim() === message.content}
+                  className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Save (Enter)"
+                >
+                  {editLoading ? <span className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ─── Normal bubble ─── */
+          <>
+            <div
+              className={cn(
+                'rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words',
+                isOwn
+                  ? 'rounded-br-md bg-green-500 text-white'
+                  : 'rounded-bl-md bg-gray-100 text-gray-900',
+                isDeleted && 'italic bg-gray-50 text-gray-400 !bg-gray-50',
+              )}
+            >
+              {isDeleted ? (
+                <span className="italic flex items-center gap-1.5">
+                  <Trash2 className="h-3 w-3 shrink-0" />
+                  This message was deleted
+                </span>
+              ) : (
+                message.content
+              )}
+            </div>
 
-        <p
-          className={cn(
-            'mt-1 px-1 text-[11px] text-gray-400',
-            isOwn && 'text-right',
-          )}
-        >
-          {formatMessageTime(message.createdAt)}
-          {isOwn && message.isRead && (
-            <span className="ml-1 text-green-500">✓✓</span>
-          )}
-        </p>
+            {/* Timestamp + edited indicator + read receipt + inline action buttons */}
+            <div
+              className={cn(
+                'mt-1 px-1 text-[11px] text-gray-400 flex items-center gap-1',
+                isOwn && 'justify-end',
+              )}
+            >
+              <span>{formatMessageTime(message.createdAt)}</span>
+              {isEdited && (
+                <span className="italic text-[10px] text-gray-400">· edited</span>
+              )}
+              {isOwn && message.isRead && !isDeleted && (
+                <span className="text-green-500 ml-0.5">✓✓</span>
+              )}
+
+              {/* ─── Inline action buttons (always visible for own non-deleted messages) ─── */}
+              {/* On desktop: subtle, become prominent on hover. On mobile: long-press also works. */}
+              {isOwn && !isDeleted && !isEditing && (
+                <div ref={menuRef} className={cn('relative inline-flex items-center', isOwn ? 'ml-1' : 'mr-1')}>
+                  {/* Direct Edit + Delete icon buttons (always visible) */}
+                  <button
+                    type="button"
+                    onClick={startEdit}
+                    className="h-7 w-7 inline-flex items-center justify-center rounded-full text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                    title="Edit message"
+                    aria-label="Edit message"
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmOpen(true)}
+                    className="h-7 w-7 inline-flex items-center justify-center rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="Delete message"
+                    aria-label="Delete message"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+
+                  {/* More options dropdown (for long-press on mobile — also reachable on desktop) */}
+                  <button
+                    type="button"
+                    onClick={() => setMenuOpen(o => !o)}
+                    className="h-7 w-7 inline-flex items-center justify-center rounded-full text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                    title="More options"
+                    aria-label="More options"
+                  >
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  </button>
+                  {menuOpen && (
+                    <div
+                      className="absolute z-50 mt-1 min-w-[140px] rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden"
+                      style={isOwn
+                        ? { right: 0, top: '100%' }
+                        : { left: 0, top: '100%' }
+                      }
+                    >
+                      <button
+                        type="button"
+                        onClick={() => { startEdit(); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 text-left"
+                      >
+                        <Edit2 className="h-3.5 w-3.5 text-gray-500" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setMenuOpen(false); setDeleteConfirmOpen(true); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 text-left border-t border-gray-100"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
+
+      {/* ─── Delete confirmation dialog ─── */}
+      {deleteConfirmOpen && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60"
+          onClick={() => !deleteLoading && setDeleteConfirmOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <Trash2 className="h-5 w-5 text-red-600" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-gray-900">Delete this message?</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  This will delete the message for everyone in this conversation. The message will be replaced with &quot;This message was deleted&quot;. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            {/* Preview of the message being deleted */}
+            <div className="p-2.5 rounded-md bg-gray-50 border border-gray-100 mb-4">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Message preview</p>
+              <p className="text-xs text-gray-700 line-clamp-3 whitespace-pre-wrap break-words">{message.content}</p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeleteConfirmOpen(false)}
+                disabled={deleteLoading}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleteLoading}
+                className="flex-1 bg-red-600 text-white hover:bg-red-700"
+              >
+                {deleteLoading ? (
+                  <><span className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5 inline-block" />Deleting...</>
+                ) : (
+                  <><Trash2 className="h-3.5 w-3.5 mr-1.5" />Delete for everyone</>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -605,9 +958,14 @@ function ConversationItem({
     >
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); onShowProfile?.((otherUser as any).id); }}
-        className="relative shrink-0 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-        title="View full profile"
+        onClick={(e) => { e.stopPropagation(); if (canViewProfile(otherUser)) onShowProfile?.((otherUser as any).id); }}
+        disabled={!canViewProfile(otherUser)}
+        className={cn(
+          'relative shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40',
+          canViewProfile(otherUser) ? 'cursor-pointer' : 'cursor-default',
+        )}
+        title={canViewProfile(otherUser) ? 'View full profile' : undefined}
+        aria-disabled={!canViewProfile(otherUser)}
       >
         <Avatar className="h-11 w-11">
           {otherUser.avatar && <AvatarImage src={otherUser.avatar} />}
@@ -619,7 +977,7 @@ function ConversationItem({
                 : 'bg-gray-200 text-gray-600',
             )}
           >
-            {getInitials(otherUser.name)}
+            {getInitials(displayUserName(otherUser))}
           </AvatarFallback>
         </Avatar>
         {otherTopTier && (
@@ -638,7 +996,7 @@ function ConversationItem({
                 isActive ? 'text-green-900' : 'text-gray-900',
               )}
             >
-              {otherUser.name}
+              {displayUserName(otherUser)}
             </span>
             <RoleIcon className={cn('h-3 w-3 shrink-0', isActive ? 'text-green-600' : 'text-gray-400')} />
           </div>
@@ -678,7 +1036,7 @@ function ConversationItem({
 // ──────────────────────────────────────────────────────────────
 
 export default function MessagesPage() {
-  const { currentUser, pendingChatUserId } = useAppStore();
+  const { currentUser, pendingChatUserId, pendingChatConversationId } = useAppStore();
 
   // Conversations list
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -836,18 +1194,34 @@ export default function MessagesPage() {
     }).catch(() => {});
   }, []);
 
-  // Auto-select conversation when navigating from View Application
-  const pendingRef = useRef(pendingChatUserId);
+  // Auto-select conversation when navigating from a notification
+  //   - pendingChatConversationId: set by interview_scheduled notifications
+  //     (jumps directly to a specific conversation by its id)
+  //   - pendingChatUserId: set by message notifications
+  //     (jumps to the conversation with that user, if any)
+  const pendingConvRef = useRef(pendingChatConversationId);
+  const pendingUserRef = useRef(pendingChatUserId);
   useEffect(() => {
-    if (pendingRef.current && conversations.length > 0) {
-      const targetConv = conversations.find(
-        (c) => c.user1Id === pendingRef.current || c.user2Id === pendingRef.current
-      );
-      if (targetConv) {
-        handleSelectConversation(targetConv);
+    if (conversations.length === 0) return;
+    let target: Conversation | undefined;
+    if (pendingConvRef.current) {
+      target = conversations.find((c) => c.id === pendingConvRef.current);
+      if (target) {
+        pendingConvRef.current = null;
+        useAppStore.getState().pendingChatConversationId = null;
       }
-      pendingRef.current = null;
-      useAppStore.getState().pendingChatUserId = null;
+    }
+    if (!target && pendingUserRef.current) {
+      target = conversations.find(
+        (c) => c.user1Id === pendingUserRef.current || c.user2Id === pendingUserRef.current
+      );
+      if (target) {
+        pendingUserRef.current = null;
+        useAppStore.getState().pendingChatUserId = null;
+      }
+    }
+    if (target) {
+      handleSelectConversation(target);
     }
   }, [conversations, handleSelectConversation]);
 
@@ -885,6 +1259,59 @@ export default function MessagesPage() {
       inputRef.current?.focus();
     }
   }, [inputValue, activeConvId, sendingMessage, fetchMessages, fetchConversations]);
+
+  // ── Edit message (WhatsApp-style) ─────────────────────────
+  // Optimistically update the local state, then call the API. If the API
+  // fails, we revert. This keeps the UI snappy even on slow connections.
+  const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
+    // Snapshot current state so we can revert on failure
+    const previousMessages = messages;
+    // Optimistic update
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: newContent, editedAt: new Date().toISOString() } : m));
+    try {
+      const res = await authFetch(`/api/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newContent }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to edit message');
+      }
+      // Refresh conversation list so the preview text updates too
+      fetchConversations();
+    } catch (err) {
+      // Revert on failure
+      setMessages(previousMessages);
+      throw err;
+    }
+  }, [messages, fetchConversations]);
+
+  // ── Delete message (WhatsApp "delete for everyone") ────────
+  // Optimistically mark the message as deleted in local state, then call API.
+  const handleDeleteMessage = useCallback(async (messageId: string) => {
+    const previousMessages = messages;
+    // Optimistic update: blank content + mark deleted
+    setMessages(prev => prev.map(m => m.id === messageId ? {
+      ...m,
+      content: '',
+      deletedAt: new Date().toISOString(),
+      deletedBy: userId,
+    } : m));
+    try {
+      const res = await authFetch(`/api/messages/${messageId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to delete message');
+      }
+      fetchConversations();
+    } catch (err) {
+      setMessages(previousMessages);
+      throw err;
+    }
+  }, [messages, userId, fetchConversations]);
 
   // ── Handle new conversation from dialog ───────────────────
 
@@ -945,6 +1372,7 @@ export default function MessagesPage() {
     const q = searchQuery.toLowerCase();
     return conversations.filter(
       (c) =>
+        displayUserName(c.otherUser).toLowerCase().includes(q) ||
         c.otherUser.name.toLowerCase().includes(q) ||
         (ROLE_LABELS[c.otherUser.role] || '').toLowerCase().includes(q) ||
         (c.lastMessage && c.lastMessage.toLowerCase().includes(q)),
@@ -975,13 +1403,17 @@ export default function MessagesPage() {
             Communicate with your team members.
           </p>
         </div>
-        <Button
-          onClick={() => setNewConvOpen(true)}
-          className="gap-2 bg-green-500 text-white hover:bg-green-600"
-        >
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">New Message</span>
-        </Button>
+        {/* "New Message" button — hidden for agents (they can only reply to
+            existing conversations started by admin/agents, not start new ones). */}
+        {myRole !== 'agent' && (
+          <Button
+            onClick={() => setNewConvOpen(true)}
+            className="gap-2 bg-green-500 text-white hover:bg-green-600"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">New Message</span>
+          </Button>
+        )}
       </div>
 
       {/* Chat Container */}
@@ -1074,16 +1506,21 @@ export default function MessagesPage() {
 
                   <button
                     type="button"
-                    onClick={() => activeOtherUser && setProfileUserId((activeOtherUser as any).id)}
-                    className="relative shrink-0 cursor-pointer rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-                    title="View full profile"
+                    onClick={() => { if (canViewProfile(activeOtherUser)) setProfileUserId((activeOtherUser as any).id); }}
+                    disabled={!canViewProfile(activeOtherUser)}
+                    className={cn(
+                      'relative shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40',
+                      canViewProfile(activeOtherUser) ? 'cursor-pointer' : 'cursor-default',
+                    )}
+                    title={canViewProfile(activeOtherUser) ? 'View full profile' : undefined}
+                    aria-disabled={!canViewProfile(activeOtherUser)}
                   >
                     <Avatar className="h-9 w-9">
                       {activeOtherUser?.avatar && (
                         <AvatarImage src={activeOtherUser.avatar} />
                       )}
                       <AvatarFallback className="bg-green-100 text-green-700 text-sm font-semibold">
-                        {activeOtherUser ? getInitials(activeOtherUser.name) : '?'}
+                        {activeOtherUser ? getInitials(displayUserName(activeOtherUser)) : '?'}
                       </AvatarFallback>
                     </Avatar>
                     {activeOtherUser && topVerificationTier((activeOtherUser.verificationTiers || []) as VerificationTier[]) && (
@@ -1099,14 +1536,20 @@ export default function MessagesPage() {
                   </button>
 
                   <div className="min-w-0 flex-1">
-                    <button
-                      type="button"
-                      onClick={() => activeOtherUser && setProfileUserId((activeOtherUser as any).id)}
-                      className="truncate text-sm font-semibold text-gray-900 hover:text-[#16A34A] hover:underline cursor-pointer block w-full text-left"
-                      title="View full profile"
-                    >
-                      {activeOtherUser?.name || 'Conversation'}
-                    </button>
+                    {canViewProfile(activeOtherUser) ? (
+                      <button
+                        type="button"
+                        onClick={() => activeOtherUser && setProfileUserId((activeOtherUser as any).id)}
+                        className="truncate text-sm font-semibold text-gray-900 hover:text-[#16A34A] hover:underline cursor-pointer block w-full text-left"
+                        title="View full profile"
+                      >
+                        {displayUserName(activeOtherUser) || 'Conversation'}
+                      </button>
+                    ) : (
+                      <span className="truncate text-sm font-semibold text-gray-900 block w-full text-left">
+                        {displayUserName(activeOtherUser) || 'Conversation'}
+                      </span>
+                    )}
                     {activeOtherUser && (
                       <Badge className={cn('text-[10px] px-1.5 py-0 h-3.5 font-medium leading-none', ROLE_COLORS[activeOtherUser.role] || 'bg-gray-100 text-gray-600')}>
                         {ROLE_LABELS[activeOtherUser.role] || activeOtherUser.role}
@@ -1139,6 +1582,8 @@ export default function MessagesPage() {
                               activeOtherUser || { name: 'Unknown', role: 'visitor' }
                             }
                             onShowProfile={setProfileUserId}
+                            onEdit={handleEditMessage}
+                            onDelete={handleDeleteMessage}
                           />
                         ))}
                       </AnimatePresence>

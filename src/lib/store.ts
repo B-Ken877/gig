@@ -18,15 +18,15 @@ export function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise
 
 const PUBLIC_PAGES: ReadonlySet<PageType> = new Set<PageType>([
   'home', 'services', 'careers', 'about', 'contact', 'academy',
-  'login', 'register-agent', 'pending-payment',
+  'login', 'register-agent', 'pending-payment', 'reset-password',
 ]);
 
 const VALID_PAGES: ReadonlySet<PageType> = new Set<PageType>([
   'home', 'services', 'careers', 'about', 'contact', 'academy',
-  'login', 'register-agent', 'pending-payment',
+  'login', 'register-agent', 'pending-payment', 'reset-password',
   'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability', 'agent-applications', 'agent-my-work', 'agent-verify-id',
   'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
-  'admin-placements', 'admin-salary-dates', 'admin-verifications',
+  'admin-placements', 'admin-salary-dates', 'admin-verifications', 'admin-interviews', 'admin-password-resets',
   'messages', 'support', 'tickets',
 ]);
 
@@ -44,7 +44,7 @@ const ROLE_PAGE_MAP: Partial<Record<UserRole, ReadonlySet<PageType>>> = {
   ]),
   admin: new Set([
     'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
-    'admin-placements', 'admin-salary-dates', 'admin-verifications',
+    'admin-placements', 'admin-salary-dates', 'admin-verifications', 'admin-interviews', 'admin-password-resets',
     'academy', 'messages', 'tickets', 'support',
   ]),
 };
@@ -96,6 +96,7 @@ interface NavSlice {
   currentPage: PageType;
   previousPages: PageType[];
   pendingChatUserId: string | null;
+  pendingChatConversationId: string | null;
   pendingJobId: string | null;
   navigateTo: (page: PageType) => void;
   goBack: () => void;
@@ -112,6 +113,7 @@ const createNavSlice = (
   currentPage: 'home',
   previousPages: [],
   pendingChatUserId: null,
+  pendingChatConversationId: null,
   pendingJobId: null,
   navigateTo: (page: PageType) => {
     const { currentPage } = get();
@@ -148,8 +150,11 @@ const createNavSlice = (
       set(() => ({ currentPage: 'careers' as PageType }));
       return;
     }
-    if (hash && VALID_PAGES.has(hash as PageType)) {
-      set(() => ({ currentPage: hash as PageType }));
+    // Reset-password URLs carry a query string: reset-password?token=...
+    // Strip the query part so the page name matches a valid PageType.
+    const pageName = hash.split('?')[0];
+    if (hash && VALID_PAGES.has(pageName as PageType)) {
+      set(() => ({ currentPage: pageName as PageType }));
     }
   },
   setPendingJobId: (jobId) => { set(() => ({ pendingJobId: jobId })); },
@@ -226,6 +231,8 @@ export const useAppStore = create<AppStore>()(
         currentPage: state.currentPage,
         previousPages: state.previousPages,
         pendingJobId: state.pendingJobId,
+        pendingChatUserId: state.pendingChatUserId,
+        pendingChatConversationId: state.pendingChatConversationId,
       }),
     }
   )

@@ -2,12 +2,12 @@
 
 export type PageType =
   | 'home' | 'services' | 'careers' | 'about' | 'contact' | 'academy'
-  | 'login' | 'register-agent'
+  | 'login' | 'register-agent' | 'reset-password'
   | 'agent-dashboard' | 'agent-profile' | 'agent-documents' | 'agent-availability' | 'agent-applications'
   | 'agent-verify-id'
   | 'agent-my-work'
   | 'admin-dashboard' | 'admin-users' | 'admin-job-posts' | 'admin-providers'
-  | 'admin-placements' | 'admin-salary-dates' | 'admin-verifications'
+  | 'admin-placements' | 'admin-salary-dates' | 'admin-verifications' | 'admin-interviews' | 'admin-password-resets'
   | 'messages' | 'support' | 'tickets' | 'pending-payment';
 
 export type UserRole = 'visitor' | 'agent' | 'admin';

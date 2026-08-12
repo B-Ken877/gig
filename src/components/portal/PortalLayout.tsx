@@ -8,8 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   LayoutDashboard, User, FileText, Calendar, ArrowLeft, Bell, LogOut, Menu, X,
-  Users, Briefcase, MessageCircle, ClipboardList, Headphones, GraduationCap,
-  CalendarClock, Network, ShieldCheck, Trash2,
+  Users, Briefcase, MessageCircle, ClipboardList, Headphones,
+  CalendarClock, Network, ShieldCheck, Trash2, CalendarDays, KeyRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -24,7 +24,6 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'Identity Verification', page: 'agent-verify-id', icon: ShieldCheck },
     { label: 'My Profile', page: 'agent-profile', icon: User },
     { label: 'Availability', page: 'agent-availability', icon: Calendar },
-    { label: 'Academy', page: 'academy', icon: GraduationCap },
     { label: 'Customer Support', page: 'support', icon: Headphones },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
@@ -33,9 +32,11 @@ const NAV_CONFIG: Record<string, NavItem[]> = {
     { label: 'Job Posts', page: 'admin-job-posts', icon: ClipboardList },
     { label: 'Providers', page: 'admin-providers', icon: Network },
     { label: 'Applications', page: 'admin-placements', icon: Briefcase },
+    { label: 'Interviews', page: 'admin-interviews', icon: CalendarDays },
     { label: 'Salary Dates', page: 'admin-salary-dates', icon: CalendarClock },
     { label: 'ID Verifications', page: 'admin-verifications', icon: ShieldCheck },
     { label: 'Users', page: 'admin-users', icon: Users },
+    { label: 'Password Resets', page: 'admin-password-resets', icon: KeyRound },
     { label: 'Support Tickets', page: 'tickets', icon: Headphones },
     { label: 'Messages', page: 'messages', icon: MessageCircle },
   ],
@@ -47,7 +48,7 @@ function getPageTitle(page: PageType): string {
     'agent-dashboard': 'Dashboard', 'agent-profile': 'My Profile', 'agent-documents': 'Documents',
     'agent-availability': 'Availability', 'agent-applications': 'My Applications', 'agent-my-work': 'My Work', 'agent-verify-id': 'Identity Verification',
     'admin-dashboard': 'Dashboard', 'admin-users': 'Users', 'admin-verifications': 'ID Verifications', 'admin-job-posts': 'Job Posts',
-    'admin-providers': 'Providers', 'admin-placements': 'Applications',
+    'admin-providers': 'Providers', 'admin-placements': 'Applications', 'admin-interviews': 'Interviews', 'admin-password-resets': 'Password Resets',
     'admin-salary-dates': 'Salary Dates',
     'messages': 'Messages', 'support': 'Customer Support', 'tickets': 'Support Tickets',
   };
@@ -62,6 +63,7 @@ function getNotificationPage(notif: Notification, role: string): PageType {
   if (t === 'job_application') return 'admin-placements';
   if (t === 'hired' || t === 'placement') return 'agent-my-work';
   if (t === 'rejected') return 'agent-applications';
+  if (t === 'interview_scheduled') return 'messages';
   if (t === 'message') return 'messages';
   if (t === 'ticket' || t === 'support') return role === 'admin' ? 'tickets' : 'support';
   // Default: go to dashboard
@@ -107,7 +109,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const handleNotificationClick = async (notif: Notification) => {
     if (!currentUser) return;
     const targetPage = getNotificationPage(notif, role);
-    // For message notifications, parse the conversationId and set pendingChatUserId
+    // For message and interview_scheduled notifications, parse the encoded
+    // payload (format: "<conversationId or senderId>|<human readable text>")
+    // and set pendingChatConversationId so the messages page auto-opens the
+    // right conversation.
     if (notif.type === 'message') {
       // Message format: "senderId|human readable text"
       // We extract the senderId to auto-open the right conversation
@@ -115,6 +120,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         const senderId = notif.message.split('|')[0];
         if (senderId && senderId.length > 10) {
           useAppStore.getState().pendingChatUserId = senderId;
+        }
+      }
+    } else if (notif.type === 'interview_scheduled') {
+      // Interview format: "conversationId|human readable text"
+      if (notif.message.includes('|')) {
+        const conversationId = notif.message.split('|')[0];
+        if (conversationId && conversationId.length > 10) {
+          useAppStore.getState().pendingChatConversationId = conversationId;
         }
       }
     }

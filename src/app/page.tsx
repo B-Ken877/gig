@@ -13,6 +13,7 @@ import ContactPage from '@/components/public/ContactPage';
 import AcademyPage from '@/components/public/AcademyPage';
 import LoginPage from '@/components/public/LoginPage';
 import RegisterAgentPage from '@/components/public/RegisterAgentPage';
+import ResetPasswordPage from '@/components/public/ResetPasswordPage';
 import AgentDashboard from '@/components/portal/AgentDashboard';
 import AgentMyApplications from '@/components/portal/AgentMyApplications';
 import AgentMyWork from '@/components/portal/AgentMyWork';
@@ -27,6 +28,8 @@ import AdminProviders from '@/components/portal/AdminProviders';
 import AdminPlacements from '@/components/portal/AdminPlacements';
 import AdminSalaryDates from '@/components/portal/AdminSalaryDates';
 import AdminVerifications from '@/components/portal/AdminVerifications';
+import AdminInterviews from '@/components/portal/AdminInterviews';
+import AdminPasswordResets from '@/components/portal/AdminPasswordResets';
 import SupportPage from '@/components/portal/SupportPage';
 import TicketsPage from '@/components/portal/TicketsPage';
 import PendingPaymentPage from '@/components/portal/PendingPaymentPage';
@@ -41,13 +44,13 @@ const PORTAL_PAGES = new Set<PageType>([
   'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability',
   'agent-applications', 'agent-my-work', 'agent-verify-id',
   'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
-  'admin-placements', 'admin-salary-dates', 'admin-verifications',
+  'admin-placements', 'admin-salary-dates', 'admin-verifications', 'admin-interviews', 'admin-password-resets',
   'messages', 'support', 'tickets',
 ]);
 
 function PublicRouter() {
   const { currentPage } = useAppStore();
-  const hideNav = currentPage === 'login' || currentPage === 'register-agent';
+  const hideNav = currentPage === 'login' || currentPage === 'register-agent' || currentPage === 'reset-password';
   return (
     <div className="min-h-screen flex flex-col">
       {!hideNav && <PublicNavbar />}
@@ -60,6 +63,7 @@ function PublicRouter() {
         {currentPage === 'academy' && <AcademyPage />}
         {currentPage === 'login' && <LoginPage />}
         {currentPage === 'register-agent' && <RegisterAgentPage />}
+        {currentPage === 'reset-password' && <ResetPasswordPage />}
       </main>
       {!hideNav && <PublicFooter />}
     </div>
@@ -171,6 +175,8 @@ export default function Home() {
             {currentPage === 'admin-placements' && <AdminPlacements />}
             {currentPage === 'admin-salary-dates' && <AdminSalaryDates />}
             {currentPage === 'admin-verifications' && <AdminVerifications />}
+            {currentPage === 'admin-interviews' && <AdminInterviews />}
+            {currentPage === 'admin-password-resets' && <AdminPasswordResets />}
             {currentPage === 'messages' && <MessagesPage />}
             {currentPage === 'academy' && <AcademyPage />}
             {currentPage === 'support' && <SupportPage />}

@@ -27,6 +27,8 @@ model User {
   notifications Notification[]
   pushSubscription  PushSubscription?
   supportTickets   SupportTicket[]
+  passwordResetRequests PasswordResetRequest[]
+  passwordResetTokens  PasswordResetToken[]
   @@index([role])
   @@index([email])
 }
@@ -124,6 +126,8 @@ model JobApplication {
   id              String   @id @default(cuid())
   agentId         String
   jobPostId       String
+  // Status flow: applied → interview_scheduled → (hired | rejected)
+  //              applied → (hired | rejected)  ← admin can still short-circuit
   status          String   @default("applied")
   coverMessage    String?
   createdAt       DateTime @default(now())
@@ -132,11 +136,39 @@ model JobApplication {
   agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   jobPost         JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
   videoResponses  VideoResponse[]
+  interviews      Interview[]
 
   @@unique([agentId, jobPostId])
   @@index([agentId])
   @@index([jobPostId])
   @@index([status])
+}
+
+// INTERVIEW — created by admin when they want to schedule a call with an
+// applicant after reviewing their video assessment. One application can have
+// multiple interviews (e.g., rescheduled), but only one "scheduled" at a time.
+model Interview {
+  id              String   @id @default(cuid())
+  applicationId   String
+  agentId         String
+  jobPostId       String
+  adminId         String
+  scheduledAt     DateTime
+  timezone        String?
+  location        String?
+  notes           String?
+  status          String   @default("scheduled")  // 'scheduled' | 'completed' | 'cancelled'
+  conversationId  String?  // the message thread where the agent was notified
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  application     JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([agentId])
+  @@index([jobPostId])
+  @@index([status])
+  @@index([scheduledAt])
 }
 
 model VideoResponse {
@@ -254,6 +286,48 @@ model AuditLog {
   @@index([action])
 }
 
+// PASSWORD RESET REQUEST — created when an agent clicks "Forgot password?"
+// on the login page and submits their email. This is a QUEUE for the admin to
+// review. The admin then generates a PasswordResetToken (with a separate row)
+// and manually emails the link to the agent.
+model PasswordResetRequest {
+  id              String   @id @default(cuid())
+  email           String   // the email the agent typed (preserved verbatim)
+  userId          String?  // resolved user id if an account exists (null otherwise)
+  status          String   @default("pending")  // 'pending' | 'link_generated' | 'dismissed'
+  resolvedBy      String?  // admin user id who handled it
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tokens          PasswordResetToken[]  // back-relation: tokens generated for this request
+
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// PASSWORD RESET TOKEN — created by an admin for a specific user. The token
+// itself is sent to the agent via a URL; only its SHA-256 hash is stored here.
+// Single-use, expires in 1 hour, bound to the user.
+model PasswordResetToken {
+  id              String   @id @default(cuid())
+  userId          String   // the user this token is for (binds it to the account)
+  tokenHash       String   @unique  // SHA-256 hash of the raw token — never store the raw token
+  expiresAt       DateTime  // 1 hour from creation
+  usedAt          DateTime?  // null until the agent successfully resets
+  usedFromIp      String?
+  requestId       String?  // optional link to the PasswordResetRequest that triggered it
+  createdBy       String   // admin user id who generated the link (audit trail)
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request         PasswordResetRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+}
+
 model AvailabilitySlot {
   id              String   @id @default(cuid())
   agentId         String
@@ -289,6 +363,10 @@ model Message {
   senderRole      String?
   content         String
   isRead          Boolean  @default(false)
+  // WhatsApp-style edit/delete support
+  editedAt        DateTime?  // set when sender edits the message content
+  deletedAt       DateTime?  // set when sender deletes the message for everyone
+  deletedBy       String?    // userId who deleted it (audit)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
