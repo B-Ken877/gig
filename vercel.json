@@ -1,4 +1,4 @@
 {
-  "buildCommand": "npx prisma generate && next build",
+  "buildCommand": "export DATABASE_URL='postgresql://placeholder:placeholder@placeholder:5432/placeholder' && npx prisma generate && next build",
   "installCommand": "npm install"
 }
