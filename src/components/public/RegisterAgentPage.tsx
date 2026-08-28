@@ -1,315 +1,228 @@
 'use client';
-
 import { useState } from 'react';
-import { useAppStore } from '@/lib/store';
 import { motion } from 'framer-motion';
-import { UserPlus, Globe, Briefcase, Languages, Clock, ArrowLeft, Eye, EyeOff, CheckCircle, Shield, Check, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, AlertCircle, ArrowRight, ArrowLeft, CheckCircle2, User, Mail, Phone, MapPin, Briefcase, Globe2, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { useAppStore } from '@/lib/store';
 
-const countries = [
-  'Haiti', 'Dominican Republic', 'United States', 'Canada', 'France',
-  'Jamaica', 'Trinidad and Tobago', 'Bahamas', 'Barbados', 'Guyana',
-  'Other'
-];
-
-function getPasswordStrength(pw: string): { label: string; color: string; width: string } {
-  if (!pw) return { label: '', color: '', width: '0%' };
-  let score = 0;
-  if (pw.length >= 8) score++;
-  if (pw.length >= 12) score++;
-  if (/[A-Z]/.test(pw)) score++;
-  if (/[0-9]/.test(pw)) score++;
-  if (/[^A-Za-z0-9]/.test(pw)) score++;
-  if (score <= 1) return { label: 'Weak', color: 'bg-red-500', width: '20%' };
-  if (score <= 2) return { label: 'Fair', color: 'bg-orange-500', width: '40%' };
-  if (score <= 3) return { label: 'Good', color: 'bg-yellow-500', width: '60%' };
-  if (score <= 4) return { label: 'Strong', color: 'bg-emerald-500', width: '80%' };
-  return { label: 'Very Strong', color: 'bg-emerald-600', width: '100%' };
-}
+const LANGUAGES = ['English', 'French', 'Spanish', 'Creole', 'Portuguese'];
+const SKILLS = ['Customer Support', 'Technical Support', 'Sales', 'Live Chat', 'Email Support', 'Appointment Setting', 'Bilingual', 'Virtual Assistant'];
+const SHIFTS = ['Morning', 'Afternoon', 'Night', 'Flexible'];
 
 export default function RegisterAgentPage() {
-  const { register, navigateTo, addToast, login } = useAppStore();
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [loading, setLoading] = useState(false);
-
+  const { register, navigateTo, login, addToast } = useAppStore();
   const [form, setForm] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    password: '',
-    confirmPassword: '',
-    country: '',
-    experience: '',
-    languages: '',
-    skills: '',
-    preferredShift: '',
+    name: '', email: '', password: '', confirm: '', phone: '',
+    country: '', preferredShift: '', experience: '',
   });
+  const [languages, setLanguages] = useState<string[]>([]);
+  const [skills, setSkills] = useState<string[]>([]);
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const updateField = (field: string, value: string) => {
-    setForm(prev => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors(prev => {
-        const next = { ...prev };
-        delete next[field];
-        return next;
-      });
-    }
-  };
-
-  const validate = () => {
-    const e: Record<string, string> = {};
-    if (!form.fullName.trim()) e.fullName = 'Full name is required';
-    if (!form.email.trim()) e.email = 'Email is required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Invalid email';
-    if (!form.phone.trim()) e.phone = 'Phone number is required';
-    if (!form.password) e.password = 'Password is required';
-    else if (form.password.length < 8) e.password = 'Min 8 characters';
-    if (form.password !== form.confirmPassword) e.confirmPassword = 'Passwords do not match';
-    if (!form.country) e.country = 'Country is required';
-    if (!form.experience) e.experience = 'Experience is required';
-    if (!form.languages.trim()) e.languages = 'At least one language is required';
-    if (!form.skills.trim()) e.skills = 'At least one skill is required';
-    setErrors(e);
-    return Object.keys(e).length === 0;
+  const toggle = (arr: string[], setArr: (a: string[]) => void, val: string) => {
+    setArr(arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    setError('');
+
+    if (form.password !== form.confirm) {
+      setError('Passwords do not match');
+      return;
+    }
+    if (form.password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
     setLoading(true);
     try {
-      const result = await register({
-        name: form.fullName,
+      await register({
+        name: form.name,
         email: form.email,
-        phone: form.phone,
         password: form.password,
-        role: 'agent' as const,
+        role: 'agent',
+        phone: form.phone || undefined,
         agentProfile: {
           country: form.country,
-          experience: parseInt(form.experience) || 0,
-          languages: form.languages.split(',').map(s => s.trim()).filter(Boolean),
-          skills: form.skills.split(',').map(s => s.trim()).filter(Boolean),
-          preferredShift: form.preferredShift || null,
+          languages,
+          skills,
+          experience: Number(form.experience) || 0,
+          preferredShift: form.preferredShift,
         },
       });
+      addToast({ title: 'Account created!', description: 'Welcome to Gig Solutions. Signing you in...', variant: 'success' });
 
-      if (result.requiresApproval) {
-        try {
-          await login(form.email, form.password);
-        } catch(loginErr) {
-          addToast({ title: 'Account created!', description: 'Please sign in to complete your payment.', variant: 'success' });
-          navigateTo('login');
-          return;
-        }
-        addToast({ title: 'Account created!', description: 'Please complete your onboarding payment to activate your account.', variant: 'success' });
-        navigateTo('pending-payment');
-        return;
+      // Auto-login after successful registration
+      try {
+        await login(form.email, form.password);
+        navigateTo('agent-dashboard' as never);
+      } catch {
+        // If auto-login fails, send them to the login page
+        navigateTo('login' as never);
       }
     } catch (err) {
-      addToast({ title: 'Registration failed', description: err instanceof Error ? err.message : 'Something went wrong. Please try again.', variant: 'destructive' });
+      setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const pwStrength = getPasswordStrength(form.password);
-
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8" style={{ background: 'linear-gradient(135deg, #0B1A2E 0%, #0f2847 50%, #0B1A2E 100%)' }}>
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-2xl"
-      >
-        {/* Header */}
-        <div className="text-center mb-6">
-          <div className="flex items-center justify-center gap-6 mb-6">
-            <button
-              onClick={() => navigateTo('home')}
-              className="inline-flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors text-sm"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-              Home
-            </button>
-            <span className="text-gray-600">|</span>
-            <button
-              onClick={() => navigateTo('login')}
-              className="inline-flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors text-sm"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Sign In
-            </button>
-          </div>
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#16A34A]">
-            <UserPlus className="h-7 w-7 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-wide text-white">Register as Agent</h1>
-          <p className="mt-2 text-sm text-gray-400">Create your account to find call center opportunities</p>
-          <div className="mt-3 inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-1.5">
-            <Shield className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-amber-300 text-sm font-medium">Annual onboarding fee: 2,000 HTG</span>
-          </div>
-        </div>
+    <main className="min-h-[calc(100vh-64px)] bg-[#0B1A2E] py-12 px-4">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-2xl">
+        <button onClick={() => navigateTo('home')} className="inline-flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors text-sm mb-4">
+          <ArrowLeft className="h-3.5 w-3.5" />
+          <span className="text-gray-300">Back to Home</span>
+        </button>
 
-        {/* Form Card */}
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-2xl border-0 overflow-hidden">
-          {/* Section 1: Personal Information */}
-          <div className="border-b border-gray-100">
-            <div className="px-6 pt-6 pb-2">
-              <h2 className="text-sm font-semibold text-[#0B1A2E] uppercase tracking-wider">Personal Information</h2>
+        <div className="rounded-2xl bg-white shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-[#0B1A2E] to-[#1a2d4a] px-6 py-8 text-white">
+            <div className="flex items-center justify-center mb-3">
+              <img src="/logo-wide.png" alt="Gig Solutions" className="h-12 w-auto" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/logo-wide-40.png'; }} />
             </div>
-            <div className="px-6 pb-6 space-y-4">
-              <div>
-                <Label className="text-gray-700 text-sm font-medium">Full Name <span className="text-red-500">*</span></Label>
-                <Input value={form.fullName} onChange={e => updateField('fullName', e.target.value)}
-                  placeholder="Jean Dupont" className="mt-1.5 h-11" />
-                {errors.fullName && <p className="text-red-500 text-xs mt-1">{errors.fullName}</p>}
+            <h1 className="text-2xl font-bold text-center">Create Your Free Account</h1>
+            <p className="mt-2 text-center text-sm text-white/70">
+              Join Gig Solutions and apply for remote jobs across the Caribbean.
+            </p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-5">
+            {error && (
+              <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle className="size-4 shrink-0" />{error}
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-gray-700 text-sm font-medium">Email <span className="text-red-500">*</span></Label>
-                  <Input type="email" value={form.email} onChange={e => updateField('email', e.target.value)}
-                    placeholder="jean@email.com" className="mt-1.5 h-11" />
-                  {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-                </div>
-                <div>
-                  <Label className="text-gray-700 text-sm font-medium">Phone <span className="text-red-500">*</span></Label>
-                  <Input value={form.phone} onChange={e => updateField('phone', e.target.value)}
-                    placeholder="+509 0000 0000" className="mt-1.5 h-11" />
-                  {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-gray-700 text-sm font-medium">Password <span className="text-red-500">*</span></Label>
-                  <div className="relative mt-1.5">
-                    <Input type={showPassword ? 'text' : 'password'} value={form.password}
-                      onChange={e => updateField('password', e.target.value)} placeholder="Min 8 characters"
-                      className="h-11 pr-10" />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {form.password && (
-                    <div className="mt-2">
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full transition-all duration-300 ${pwStrength.color}`} style={{ width: pwStrength.width }} />
-                      </div>
-                      <p className={`text-xs mt-1 ${pwStrength.color.replace('bg-', 'text-')}`}>{pwStrength.label}</p>
-                    </div>
-                  )}
-                  {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
-                </div>
-                <div>
-                  <Label className="text-gray-700 text-sm font-medium">Confirm Password <span className="text-red-500">*</span></Label>
-                  <div className="relative mt-1.5">
-                    <Input type={showConfirm ? 'text' : 'password'} value={form.confirmPassword}
-                      onChange={e => updateField('confirmPassword', e.target.value)} placeholder="Repeat password"
-                      className="h-11 pr-10" />
-                    <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {form.confirmPassword && form.password === form.confirmPassword && (
-                    <p className="text-emerald-600 text-xs mt-1 flex items-center gap-1"><Check className="w-3 h-3" />Passwords match</p>
-                  )}
-                  {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 2: Professional Information */}
-          <div className="px-6 pt-6 pb-6 space-y-4">
-            <div className="pb-2">
-              <h2 className="text-sm font-semibold text-[#0B1A2E] uppercase tracking-wider">Professional Information</h2>
-            </div>
-
-            <div>
-              <Label className="text-gray-700 text-sm font-medium flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5 text-gray-400" /> Country <span className="text-red-500">*</span>
-              </Label>
-              <select value={form.country} onChange={e => updateField('country', e.target.value)}
-                className="w-full mt-1.5 h-11 rounded-md border border-gray-200 bg-white px-3 text-sm focus:ring-2 focus:ring-[#16A34A] focus:border-[#16A34A] focus:outline-none transition-colors text-gray-900">
-                <option value="">Select country</option>
-                {countries.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              {errors.country && <p className="text-red-500 text-xs mt-1">{errors.country}</p>}
-            </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-gray-700 text-sm font-medium flex items-center gap-1.5">
-                  <Briefcase className="w-3.5 h-3.5 text-gray-400" /> Experience (years) <span className="text-red-500">*</span>
-                </Label>
-                <Input type="number" min="0" value={form.experience} onChange={e => updateField('experience', e.target.value)}
-                  placeholder="e.g. 2" className="mt-1.5 h-11" />
-                {errors.experience && <p className="text-red-500 text-xs mt-1">{errors.experience}</p>}
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Full Name</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Jean Pierre Louis" required className="pl-10" />
+                </div>
               </div>
-              <div>
-                <Label className="text-gray-700 text-sm font-medium flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-gray-400" /> Preferred Shift
-                </Label>
-                <select value={form.preferredShift} onChange={e => updateField('preferredShift', e.target.value)}
-                  className="w-full mt-1.5 h-11 rounded-md border border-gray-200 bg-white px-3 text-sm focus:ring-2 focus:ring-[#16A34A] focus:border-[#16A34A] focus:outline-none transition-colors text-gray-900">
-                  <option value="">Any shift</option>
-                  <option value="Morning">Morning</option>
-                  <option value="Afternoon">Afternoon</option>
-                  <option value="Night">Night</option>
-                  <option value="Flexible">Flexible</option>
-                </select>
+
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="you@email.com" required className="pl-10" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Phone (optional)</Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+509 1234 5678" className="pl-10" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Password</Label>
+                <div className="relative">
+                  <Input type={showPassword ? 'text' : 'password'} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="Min. 8 characters" required className="pl-10" />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Confirm Password</Label>
+                <Input type={showPassword ? 'text' : 'password'} value={form.confirm} onChange={e => setForm(f => ({ ...f, confirm: e.target.value }))} placeholder="Re-enter password" required />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Country</Label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} placeholder="Haiti, Jamaica, Trinidad..." className="pl-10" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Experience (years)</Label>
+                <div className="relative">
+                  <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input type="number" min="0" value={form.experience} onChange={e => setForm(f => ({ ...f, experience: e.target.value }))} placeholder="0" className="pl-10" />
+                </div>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Preferred Shift</Label>
+                <div className="flex flex-wrap gap-2">
+                  {SHIFTS.map(s => (
+                    <button key={s} type="button" onClick={() => setForm(f => ({ ...f, preferredShift: f.preferredShift === s ? '' : s }))}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                        form.preferredShift === s ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Languages</Label>
+                <div className="flex flex-wrap gap-2">
+                  {LANGUAGES.map(l => (
+                    <button key={l} type="button" onClick={() => toggle(languages, setLanguages, l)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                        languages.includes(l) ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Skills</Label>
+                <div className="flex flex-wrap gap-2">
+                  {SKILLS.map(s => (
+                    <button key={s} type="button" onClick={() => toggle(skills, setSkills, s)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                        skills.includes(s) ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div>
-              <Label className="text-gray-700 text-sm font-medium flex items-center gap-1.5">
-                <Languages className="w-3.5 h-3.5 text-gray-400" /> Languages <span className="text-red-500">*</span>
-              </Label>
-              <Input value={form.languages} onChange={e => updateField('languages', e.target.value)}
-                placeholder="English, French, Creole (comma-separated)" className="mt-1.5 h-11" />
-              {errors.languages && <p className="text-red-500 text-xs mt-1">{errors.languages}</p>}
+            <div className="bg-[#16A34A]/5 border border-[#16A34A]/20 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 text-[#16A34A] shrink-0 mt-0.5" />
+                <p className="text-xs text-gray-600">
+                  <strong className="text-gray-900">Free to register.</strong> No payment required to create an account.
+                  When you find a job you like, you&apos;ll take a quick assessment to apply.
+                </p>
+              </div>
             </div>
 
-            <div>
-              <Label className="text-gray-700 text-sm font-medium">Skills <span className="text-red-500">*</span></Label>
-              <Textarea value={form.skills} onChange={e => updateField('skills', e.target.value)}
-                placeholder="Customer service, Tech support, Sales (comma-separated)"
-                className="mt-1.5 min-h-[72px] text-sm" />
-              {errors.skills && <p className="text-red-500 text-xs mt-1">{errors.skills}</p>}
-            </div>
-          </div>
-
-          {/* Submit */}
-          <div className="px-6 pb-6">
-            <Button type="submit" disabled={loading}
-              className="w-full bg-[#16A34A] text-white hover:bg-[#15a34a]/90 font-semibold py-3 text-base h-12 rounded-xl transition-colors">
-              {loading ? (
-                <span className="flex items-center gap-2"><Loader2 className="h-5 w-5 animate-spin" />Creating account...</span>
-              ) : (
-                <span className="flex items-center gap-2"><CheckCircle className="w-5 h-5" />Create Agent Account</span>
-              )}
+            <Button type="submit" disabled={loading} className="w-full bg-[#16A34A] text-white hover:bg-[#16A34A]/90 py-6 text-base font-semibold">
+              {loading ? <><Loader2 className="mr-2 size-4 animate-spin" />Creating Account...</> : <>Create Free Account <ArrowRight className="ml-2 h-4 w-4" /></>}
             </Button>
-          </div>
 
-          {/* Footer link */}
-          <div className="border-t border-gray-100 px-6 py-4 bg-gray-50 text-center">
-            <p className="text-sm text-gray-500">
+            <p className="text-center text-sm text-gray-500">
               Already have an account?{' '}
-              <button type="button" onClick={() => navigateTo('login')} className="text-[#16A34A] font-semibold hover:text-[#22c55e] transition-colors">
+              <button type="button" onClick={() => navigateTo('login')} className="font-semibold text-[#16A34A] hover:underline">
                 Sign in
               </button>
             </p>
-          </div>
-        </form>
+          </form>
+        </div>
       </motion.div>
-    </div>
+    </main>
   );
 }

@@ -1,22 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { createNotification } from '@/lib/notifications';
 
+/**
+ * POST /api/auth/register
+ *
+ * New philosophy: only agents can self-register. There are no client/call
+ * center accounts anymore. Registration is FREE — no payment is required
+ * to create an account or to apply for a job. The only gate to applying
+ * is passing the per-job assessment.
+ *
+ * On registration, a welcome email + in-app notification are sent asking
+ * the agent to verify their identity.
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, email, password, role, phone, agentProfile, clientProfile } = body;
+    const { name, email, password, phone, agentProfile } = body;
 
     if (!name || !email || !password) {
       return NextResponse.json({ error: 'Name, email, and password are required' }, { status: 400 });
     }
 
-    const effectiveRole = role || 'client';
-    if (effectiveRole !== 'agent' && effectiveRole !== 'client') {
-      return NextResponse.json({ error: 'Only agent and client accounts can be self-registered' }, { status: 403 });
-    }
+    const normalizedEmail = String(email).trim().toLowerCase();
 
-    const existing = await db.user.findUnique({ where: { email } });
+    const existing = await db.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
       return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
     }
@@ -29,65 +38,54 @@ export async function POST(req: NextRequest) {
 
     const user = await db.user.create({
       data: {
-        email, password: hashedPassword, name,
-        role: effectiveRole,
+        email: normalizedEmail, password: hashedPassword, name,
+        role: 'agent',
         phone: phone || null,
-        isActive: false,
-        accountStatus: 'pending_approval',
+        isActive: true,
+        accountStatus: 'active',
       },
     });
 
-    // Create role-specific profile
-    if (effectiveRole === 'agent' && agentProfile) {
+    // Create agent profile
+    if (agentProfile) {
       await db.agent.create({
         data: {
           userId: user.id,
           country: agentProfile.country || null,
           languages: JSON.stringify(agentProfile.languages || []),
           skills: JSON.stringify(agentProfile.skills || []),
-          experience: agentProfile.experience || 0,
+          experience: Number(agentProfile.experience) || 0,
           preferredShift: agentProfile.preferredShift || null,
-          salaryExpectation: agentProfile.salaryExpectation || null,
+          salaryExpectation: agentProfile.salaryExpectation ? Number(agentProfile.salaryExpectation) : null,
         },
       });
-    } else if (effectiveRole === 'agent') {
+    } else {
       await db.agent.create({ data: { userId: user.id } });
     }
 
-    if (effectiveRole === 'client' && clientProfile) {
-      await db.client.create({
-        data: {
-          userId: user.id,
-          companyName: clientProfile.companyName || name,
-          industry: clientProfile.industry || null,
-          contactPerson: name,
-          phone: phone || clientProfile.phone || null,
-          companyLink: clientProfile.companyLink || null,
-        },
+    // ─── Send welcome email + in-app notification ──────────────────────
+    // Asks the new agent to verify their identity so they can apply for jobs.
+    // This uses createNotification which sends 3 things at once:
+    //   1. In-app notification (shows in their notification bell)
+    //   2. Browser push notification (if subscribed)
+    //   3. Email (via Resend) — using the 'welcome' template
+    try {
+      await createNotification({
+        userId: user.id,
+        title: 'Welcome to Gig Solutions! Verify Your Identity',
+        message: 'Welcome to Gig Solutions! To start applying for jobs, please verify your identity. It only takes 3 minutes.',
+        type: 'welcome',
+        pushBody: 'Welcome to Gig Solutions! Please verify your identity to start applying for jobs.',
+        pushUrl: '/#agent-verify-id',
       });
-    } else if (effectiveRole === 'client') {
-      await db.client.create({
-        data: { userId: user.id, companyName: name, contactPerson: name },
-      });
+    } catch (notifErr) {
+      // Don't fail registration if the notification/email fails
+      console.error('[register] welcome notification failed:', notifErr);
     }
 
-    // Create payment request
-    const feeType = effectiveRole === 'agent' ? 'annual' : 'monthly';
-    const amount = effectiveRole === 'agent' ? 2000 : 3000;
-    await db.paymentRequest.create({
-      data: {
-        userId: user.id,
-        role: effectiveRole,
-        feeType,
-        amount,
-        currency: 'HTG',
-        status: 'pending',
-      },
-    });
-
     return NextResponse.json({
-      message: 'Account created! Please complete your onboarding payment to activate your account.',
-      requiresApproval: true,
+      message: 'Account created successfully! You can now sign in.',
+      requiresApproval: false,
       userId: user.id,
       user: {
         id: user.id, email: user.email, name: user.name,

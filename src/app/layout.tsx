@@ -23,14 +23,40 @@ export const metadata: Metadata = {
   description: "Enterprise staffing platform connecting qualified customer support agents with call centers and companies seeking remote talent across the Caribbean and beyond.",
   keywords: ["staffing", "remote talent", "customer support", "call center", "Caribbean", "Gig Solutions", "SRMS"],
   authors: [{ name: "Gig Solutions" }],
+  manifest: "/manifest.webmanifest",
   icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%230B1A2E'/><text x='50' y='66' font-size='44' font-weight='bold' fill='%23C9A84C' text-anchor='middle' font-family='sans-serif'>GS</text></svg>",
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
+    ],
+    shortcut: ["/favicon.ico"],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Gig Solutions",
+    statusBarStyle: "black-translucent",
   },
   openGraph: {
     title: "Gig Solutions — Staffing Resource Management System",
     description: "Enterprise staffing platform for Caribbean and global remote talent.",
     type: "website",
+    images: [{ url: "/logo-square.png", width: 512, height: 512, alt: "Gig Solutions" }],
   },
+  twitter: {
+    card: "summary",
+    title: "Gig Solutions — Staffing Resource Management System",
+    description: "Enterprise staffing platform for Caribbean and global remote talent.",
+    images: ["/logo-square.png"],
+  },
+};
+
+export const viewport = {
+  themeColor: "#0B1A2E",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({

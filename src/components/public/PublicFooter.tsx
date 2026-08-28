@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  Phone,
   Mail,
   MapPin,
   Facebook,
@@ -16,7 +15,6 @@ const QUICK_LINKS: { label: string; page: PageType }[] = [
   { label: 'Home', page: 'home' },
   { label: 'About Us', page: 'about' },
   { label: 'Services', page: 'services' },
-  { label: 'For Clients', page: 'for-clients' },
   { label: 'Careers', page: 'careers' },
   { label: 'Contact', page: 'contact' },
 ];
@@ -65,9 +63,9 @@ export default function PublicFooter() {
               </div>
             </div>
             <p className="mb-6 max-w-xs text-sm leading-relaxed text-white/60">
-              The premier staffing partner for call centers and companies
-              seeking qualified remote professionals across the Caribbean and
-              beyond.
+              The premier platform connecting skilled remote agents with
+              job opportunities across the Caribbean and beyond. Browse
+              jobs, pass a quick assessment, and start working from home.
             </p>
             <div className="flex gap-3">
               {SOCIAL_LINKS.map(({ icon: Icon, href, label }) => (
@@ -143,22 +141,6 @@ export default function PublicFooter() {
                   <br />
                   Port-au-Prince, Haiti
                 </span>
-              </li>
-              <li className="flex items-center gap-3">
-                <Phone className="size-4 shrink-0 text-[#16A34A]" />
-                <a
-                  href="tel:+50944256486"
-                  className="transition-enterprise text-sm text-white/60 hover:text-[#16A34A]"
-                >
-                  +509 4425 6486
-                </a>
-                <span className="text-white/30">/</span>
-                <a
-                  href="tel:+50947579322"
-                  className="transition-enterprise text-sm text-white/60 hover:text-[#16A34A]"
-                >
-                  +509 4757 9322
-                </a>
               </li>
               <li className="flex items-center gap-3">
                 <Mail className="size-4 shrink-0 text-[#16A34A]" />

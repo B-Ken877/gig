@@ -1,117 +1,75 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Users, Briefcase, Clock, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { useState, useEffect } from 'react';
+import {
+  Briefcase, Users, ClipboardList, DollarSign, ArrowRight, TrendingUp,
+  AlertCircle, RefreshCw, CheckCircle2, Clock, Network, CalendarClock, ShieldCheck,
+} from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/lib/store';
-import type { PaymentRequest } from '@/lib/types';
 
-const POLL_INTERVAL = 15000;
+interface Stats {
+  totalJobs: number;
+  activeJobs: number;
+  totalAgents: number;
+  activeAgents: number;
+  pendingApplications: number;
+  totalApplications: number;
+  activePlacements: number;
+  totalProviders: number;
+}
 
 export default function AdminDashboard() {
-  const { currentUser, addToast } = useAppStore();
-  const [stats, setStats] = useState({ agents: 0, clients: 0, pendingPayments: 0, approvedPayments: 0 });
-  const [recentPayments, setRecentPayments] = useState<PaymentRequest[]>([]);
+  const { currentUser, navigateTo } = useAppStore();
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [recentApps, setRecentApps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [firstLoad, setFirstLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isMountedRef = useRef(true);
-
-  const loadDashboard = useCallback(() => {
-    if (!currentUser) return;
-    const headers = { 'X-User-Id': currentUser.id, 'X-User-Role': 'admin' };
-
-    Promise.all([
-      fetch('/api/users?role=agent', { headers }).then(r => {
-        if (!r.ok) throw new Error('Failed to load agents');
-        return r.json();
-      }),
-      fetch('/api/users?role=client', { headers }).then(r => {
-        if (!r.ok) throw new Error('Failed to load clients');
-        return r.json();
-      }),
-      fetch('/api/payment-requests', { headers }).then(r => {
-        if (!r.ok) throw new Error('Failed to load payments');
-        return r.json();
-      }),
-    ])
-      .then(([agentData, clientData, payData]) => {
-        if (!isMountedRef.current) return;
-        if (agentData.users) setStats(s => ({ ...s, agents: agentData.users.length }));
-        if (clientData.users) setStats(s => ({ ...s, clients: clientData.users.length }));
-        if (payData.paymentRequests) {
-          setRecentPayments(payData.paymentRequests.slice(0, 5));
-          setStats(s => ({
-            ...s,
-            pendingPayments: payData.paymentRequests.filter((p: PaymentRequest) => p.status === 'pending').length,
-            approvedPayments: payData.paymentRequests.filter((p: PaymentRequest) => p.status === 'approved').length,
-          }));
-        }
-      })
-      .catch(err => {
-        if (isMountedRef.current) setError(err.message);
-      })
-      .finally(() => {
-        if (isMountedRef.current) {
-          setLoading(false);
-          setFirstLoad(false);
-        }
-      });
-  }, [currentUser]);
 
   useEffect(() => {
-    isMountedRef.current = true;
     if (!currentUser) return;
-    setLoading(true);
-    setError(null);
-    loadDashboard();
-    pollRef.current = setInterval(loadDashboard, POLL_INTERVAL);
-    return () => {
-      isMountedRef.current = false;
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [currentUser, loadDashboard]);
+    const headers = { 'X-User-Id': currentUser.id, 'X-User-Role': currentUser.role };
 
-  const handleApprove = async (p: PaymentRequest) => {
-    const res = await fetch('/api/payment-requests', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
-      body: JSON.stringify({ id: p.id, status: 'approved' }),
-    });
-    if (res.ok) {
-      addToast({ title: (p.user?.name || 'User') + ' approved!', variant: 'success' });
-      loadDashboard();
-    }
-  };
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [jobsRes, agentsRes, appsRes, placementsRes, providersRes] = await Promise.all([
+          fetch('/api/job-posts?all=1', { headers }).then(r => r.json()),
+          fetch('/api/agents', { headers }).then(r => r.json()),
+          fetch('/api/job-applications', { headers }).then(r => r.json()),
+          fetch('/api/placements', { headers }).then(r => r.json()),
+          fetch('/api/providers', { headers }).then(r => r.json()),
+        ]);
 
-  const handleReject = async (p: PaymentRequest) => {
-    const res = await fetch('/api/payment-requests', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': currentUser!.id, 'X-User-Role': currentUser!.role },
-      body: JSON.stringify({ id: p.id, status: 'rejected' }),
-    });
-    if (res.ok) {
-      addToast({ title: (p.user?.name || 'User') + ' rejected', variant: 'destructive' });
-      loadDashboard();
-    }
-  };
+        const jobs = jobsRes.jobPosts || [];
+        const agents = agentsRes.agents || (agentsRes.id ? [agentsRes] : []);
+        const apps = appsRes.applications || [];
+        const placements = placementsRes.placements || [];
+        const providers = providersRes.providers || [];
 
-  const statCards = [
-    { label: 'Total Agents', value: stats.agents, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Call Centers', value: stats.clients, icon: Briefcase, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'Pending Payments', value: stats.pendingPayments, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'Approved', value: stats.approvedPayments, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
-  ];
+        setStats({
+          totalJobs: jobs.length,
+          activeJobs: jobs.filter((j: any) => j.isActive).length,
+          totalAgents: agents.length,
+          activeAgents: agents.filter((a: any) => a.status === 'Available').length,
+          pendingApplications: apps.filter((a: any) => a.status === 'applied').length,
+          totalApplications: apps.length,
+          activePlacements: placements.filter((p: any) => p.status === 'active').length,
+          totalProviders: providers.length,
+        });
+        setRecentApps(apps.slice(0, 5));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [currentUser]);
 
-  if (loading && firstLoad) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  if (loading) return <div className="flex items-center justify-center py-16"><div className="animate-spin h-8 w-8 border-2 border-green-500 border-t-transparent rounded-full" /></div>;
 
   if (error) {
     return (
@@ -119,8 +77,7 @@ export default function AdminDashboard() {
         <CardContent className="p-8 text-center">
           <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-3" />
           <p className="text-sm font-medium text-red-700 mb-1">Failed to load dashboard</p>
-          <p className="text-xs text-red-500 mb-4">{error}</p>
-          <Button variant="outline" size="sm" onClick={loadDashboard} className="border-red-300 text-red-600 hover:bg-red-100">
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />Try Again
           </Button>
         </CardContent>
@@ -128,58 +85,170 @@ export default function AdminDashboard() {
     );
   }
 
+  const cards = [
+    { label: 'Active Jobs', value: stats?.activeJobs ?? 0, total: stats?.totalJobs, icon: Briefcase, color: 'text-blue-600', bg: 'bg-blue-50', page: 'admin-job-posts' as const },
+    { label: 'Pending Applications', value: stats?.pendingApplications ?? 0, total: stats?.totalApplications, icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', page: 'admin-placements' as const },
+    { label: 'Active Placements', value: stats?.activePlacements ?? 0, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50', page: 'admin-placements' as const },
+    { label: 'Active Agents', value: stats?.activeAgents ?? 0, total: stats?.totalAgents, icon: Users, color: 'text-purple-600', bg: 'bg-purple-50', page: 'admin-users' as const },
+  ];
+
+  const actions = [
+    { label: 'Post a Job', desc: 'Create a new job posting', icon: Briefcase, color: 'text-blue-600', bg: 'bg-blue-50', page: 'admin-job-posts' as const },
+    { label: 'Add Provider', desc: 'Record who gave us a job', icon: Network, color: 'text-purple-600', bg: 'bg-purple-50', page: 'admin-providers' as const },
+    { label: 'Review Applications', desc: 'Hire or reject applicants', icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', page: 'admin-placements' as const },
+    { label: 'Add Pay Date', desc: 'Schedule upcoming paydays', icon: CalendarClock, color: 'text-green-600', bg: 'bg-green-50', page: 'admin-salary-dates' as const },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map(s => {
-          const Icon = s.icon;
-          return (
-            <Card key={s.label}><CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">{s.label}</p>
-                  <p className="text-2xl font-bold mt-1">{s.value}</p>
+      {/* Welcome */}
+      <div className="relative rounded-xl overflow-hidden shadow-2xl shadow-[#0B1A2E]/20">
+          <div className="relative bg-gradient-to-br from-[#0B1A2E] via-[#0d2240] to-[#0f2d52] px-6 py-6 text-white overflow-hidden">
+            {/* Decorative gradient orbs */}
+            <div className="absolute top-0 right-0 w-48 h-48 bg-[#16A34A]/15 rounded-full blur-3xl -mr-16 -mt-16" />
+            <div className="absolute bottom-0 left-1/3 w-32 h-32 bg-[#16A34A]/8 rounded-full blur-2xl" />
+            {/* Subtle grid pattern */}
+            <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+
+            <div className="relative flex items-start justify-between gap-4">
+              <div className="flex items-center gap-4 min-w-0">
+                {/* Avatar with gradient ring */}
+                <div className="relative shrink-0">
+                  <Avatar className="relative h-14 w-14 ring-2 ring-[#16A34A]/40 shadow-2xl">
+                    {currentUser?.avatar && <AvatarImage src={currentUser.avatar} alt={currentUser?.name || 'User'} />}
+                    <AvatarFallback className="bg-gradient-to-br from-[#16A34A] to-[#0F7B35] text-white text-lg font-bold">
+                      {(currentUser?.name || 'A').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="absolute -bottom-0.5 -right-0.5 bg-[#16A34A] rounded-full p-1.5 ring-2 ring-[#0B1A2E] shadow-lg">
+                    <ShieldCheck className="h-3.5 w-3.5 text-white" />
+                  </span>
                 </div>
-                <div className={`h-10 w-10 rounded-lg ${s.bg} flex items-center justify-center`}>
-                  <Icon className={`h-5 w-5 ${s.color}`} />
+
+                {/* Greeting + info */}
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium text-[#4ADE80] uppercase tracking-wider mb-0.5">
+                    {(() => {
+                      const hour = new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+                      const h = parseInt(hour);
+                      return h < 12 ? 'Good Morning' : h < 18 ? 'Good Afternoon' : 'Good Evening';
+                    })()}
+                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-2xl font-bold tracking-tight">{currentUser?.name?.split(' ')[0]}</h2>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#16A34A]/20 border border-[#16A34A]/30 text-[#4ADE80] text-[10px] font-semibold uppercase tracking-wide">
+                      <ShieldCheck className="h-2.5 w-2.5" /> Admin
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · Platform Control Center
+                  </p>
                 </div>
               </div>
-            </CardContent></Card>
+
+              {/* Inline mini-stats */}
+              {stats && (
+                <div className="hidden sm:flex items-center gap-4 shrink-0">
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-white leading-none">{stats.activeJobs}</p>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">Active Jobs</p>
+                  </div>
+                  <div className="w-px h-8 bg-white/10" />
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-[#4ADE80] leading-none">{stats.totalAgents}</p>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">Agents</p>
+                  </div>
+                  <div className="w-px h-8 bg-white/10" />
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-amber-400 leading-none">{stats.pendingApplications}</p>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">Pending</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {cards.map(c => {
+          const Icon = c.icon;
+          return (
+            <Card key={c.label} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo(c.page)}>
+              <CardContent className="p-3 flex items-center gap-2">
+                <div className={`h-9 w-9 rounded-lg ${c.bg} flex items-center justify-center shrink-0`}>
+                  <Icon className={`h-4 w-4 ${c.color}`} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] text-gray-500">{c.label}</p>
+                  <p className="text-lg font-bold leading-tight">
+                    {c.value}
+                    {c.total != null && c.total !== c.value && (
+                      <span className="text-xs text-gray-400 font-normal"> / {c.total}</span>
+                    )}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           );
         })}
       </div>
 
+      {/* Quick actions */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Actions</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {actions.map(a => {
+            const Icon = a.icon;
+            return (
+              <Card key={a.label} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigateTo(a.page)}>
+                <CardContent className="p-3 flex flex-col items-center text-center">
+                  <div className={`h-10 w-10 rounded-lg ${a.bg} flex items-center justify-center mb-2`}>
+                    <Icon className={`h-5 w-5 ${a.color}`} />
+                  </div>
+                  <h3 className="text-xs font-semibold">{a.label}</h3>
+                  <p className="text-[10px] text-gray-500 mt-0.5">{a.desc}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Recent applications */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Recent Payment Requests</CardTitle></CardHeader>
-        <CardContent>
-          {recentPayments.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">No payment requests yet</p>
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-[#16A34A]" />
+              <h3 className="text-sm font-semibold">Recent Applications</h3>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => navigateTo('admin-placements' as never)}>
+              View All <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+            </Button>
+          </div>
+          {recentApps.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <ClipboardList className="h-10 w-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No applications yet.</p>
+            </div>
           ) : (
-            <div className="space-y-3">
-              {recentPayments.map(p => (
-                <div key={p.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{p.user?.name || 'Unknown'}</p>
-                    <p className="text-xs text-gray-500">{p.user?.email} · {p.role} · {p.amount} {p.currency}</p>
+            <div className="space-y-2">
+              {recentApps.map(app => (
+                <div key={app.id} className="flex items-center gap-3 p-3 border rounded-lg hover:shadow-sm transition-shadow">
+                  <div className="h-8 w-8 rounded-full bg-[#16A34A]/10 flex items-center justify-center text-xs font-bold text-[#16A34A]">
+                    {(app.agent?.name || 'A').split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-3">
-                    {p.status === 'pending' ? (
-                      <>
-                        <Button size="sm" variant="outline" className="text-green-600 border-green-300 hover:bg-green-50 text-xs h-7"
-                          onClick={() => handleApprove(p)}>
-                          Approve
-                        </Button>
-                        <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50 text-xs h-7"
-                          onClick={() => handleReject(p)}>
-                          Reject
-                        </Button>
-                      </>
-                    ) : (
-                      <Badge variant={p.status === 'approved' ? 'default' : 'destructive'}>
-                        {p.status}
-                      </Badge>
-                    )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{app.agent?.name || 'Agent'}</p>
+                    <p className="text-xs text-gray-500">{app.jobPost?.jobTitle || 'Job'} · {new Date(app.createdAt).toLocaleDateString()}</p>
                   </div>
+                  <Badge variant="secondary" className={`text-[10px] uppercase ${
+                    app.status === 'applied' ? 'bg-blue-100 text-blue-700' :
+                    app.status === 'reviewed' ? 'bg-amber-100 text-amber-700' :
+                    app.status === 'hired' ? 'bg-green-100 text-green-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>{app.status}</Badge>
                 </div>
               ))}
             </div>

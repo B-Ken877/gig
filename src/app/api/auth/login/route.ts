@@ -8,7 +8,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
     }
 
-    const user = await db.user.findUnique({ where: { email } });
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const user = await db.user.findUnique({ where: { email: normalizedEmail } });
     if (!user) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
@@ -29,11 +31,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Your account has been suspended. Please contact support.' }, { status: 403 });
     }
 
-    // Allow pending_approval users to log in (they need to access payment chat)
+    // Role merge: legacy 'payment_taker' or 'client' rows are treated as 'admin'
+    // so the CEO can still log in with an old account.
+    const effectiveRole = (user.role === 'payment_taker' || user.role === 'client') ? 'admin' : user.role;
+
     return NextResponse.json({
       user: {
         id: user.id, email: user.email, name: user.name,
-        role: user.role, phone: user.phone, avatar: user.avatar,
+        role: effectiveRole, phone: user.phone, avatar: user.avatar,
         isActive: user.isActive, accountStatus: user.accountStatus,
       },
     });

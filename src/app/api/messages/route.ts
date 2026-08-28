@@ -7,6 +7,8 @@ function normalizePair(idA: string, idB: string): [string, string] {
   return idA < idB ? [idA, idB] : [idB, idA];
 }
 
+// GET /api/messages?userId=... → list conversations for the user
+// GET /api/messages?conversationId=... → list messages in a conversation
 export async function GET(req: NextRequest) {
   try {
     const auth = await getAuth(req);
@@ -28,48 +30,57 @@ export async function GET(req: NextRequest) {
         where: { conversationId }, orderBy: { createdAt: 'asc' },
       });
 
-      const unread = messages.filter(m => !m.isRead && m.senderId !== userId);
-      if (unread.length > 0) {
-        await db.message.updateMany({ where: { id: { in: unread.map(m => m.id) } }, data: { isRead: true } });
-        const field = conv.user1Id === userId ? 'unreadUser1' : 'unreadUser2';
-        await db.conversation.update({ where: { id: conversationId }, data: { [field]: 0 } });
-      }
-
-      return NextResponse.json({ messages: messages.map(m => ({ ...m, createdAt: m.createdAt.toISOString(), updatedAt: m.updatedAt.toISOString() })) });
+      return NextResponse.json({
+        messages: messages.map(m => ({
+          id: m.id, conversationId: m.conversationId, senderId: m.senderId,
+          senderRole: m.senderRole, content: m.content, isRead: m.isRead,
+          createdAt: m.createdAt.toISOString(),
+          editedAt: m.editedAt ? m.editedAt.toISOString() : null,
+          deletedAt: m.deletedAt ? m.deletedAt.toISOString() : null,
+          deletedBy: m.deletedBy,
+        })),
+      });
     }
 
-    if (userIdParam) {
-      const conversations = await db.conversation.findMany({
-        where: { OR: [{ user1Id: userId }, { user2Id: userId }] },
-        include: {
-          user1: { select: { id: true, name: true, role: true, avatar: true } },
-          user2: { select: { id: true, name: true, role: true, avatar: true } },
-          messages: { orderBy: { createdAt: 'desc' }, take: 1 },
-        },
-        orderBy: { lastMessageAt: 'desc' },
-      });
+    // List all conversations for the user
+    const targetUserId = userIdParam || userId;
+    const conversations = await db.conversation.findMany({
+      where: { OR: [{ user1Id: targetUserId }, { user2Id: targetUserId }] },
+      orderBy: { lastMessageAt: 'desc' },
+    });
 
-      const result = conversations.map(c => {
-        const isUser1 = c.user1Id === userId;
-        const otherUser = isUser1 ? c.user2 : c.user1;
-        return {
-          id: c.id, user1Id: c.user1Id, user2Id: c.user2Id,
-          lastMessage: c.lastMessage, lastMessageAt: c.lastMessageAt?.toISOString() || null,
-          unreadCount: isUser1 ? c.unreadUser1 : c.unreadUser2,
-          otherUser: otherUser ? { name: otherUser.name, role: otherUser.role, avatar: otherUser.avatar } : { name: 'Unknown', role: 'visitor', avatar: null },
-          latestMessage: c.messages[0] ? { id: c.messages[0].id, content: c.messages[0].content, senderId: c.messages[0].senderId, createdAt: c.messages[0].createdAt.toISOString() } : null,
-        };
-      });
-      return NextResponse.json({ conversations: result });
-    }
+    // Fetch the other user for each conversation
+    const otherUserIds = conversations.map(c => c.user1Id === targetUserId ? c.user2Id : c.user1Id);
+    const otherUsers = await db.user.findMany({
+      where: { id: { in: otherUserIds } },
+      select: { id: true, name: true, email: true, role: true, avatar: true },
+    });
+    const userMap = new Map(otherUsers.map(u => [u.id, u]));
 
-    return NextResponse.json({ error: 'Provide conversationId or userId' }, { status: 400 });
+    const result = conversations.map(c => {
+      const otherId = c.user1Id === targetUserId ? c.user2Id : c.user1Id;
+      const other = userMap.get(otherId);
+      const unreadCount = c.user1Id === targetUserId ? c.unreadUser1 : c.unreadUser2;
+      return {
+        id: c.id,
+        user1Id: c.user1Id,
+        user2Id: c.user2Id,
+        otherUser: other ? { id: other.id, name: other.name, email: other.email, role: other.role, avatar: other.avatar } : null,
+        lastMessage: c.lastMessage,
+        lastMessageAt: c.lastMessageAt?.toISOString() || null,
+        unreadCount,
+      };
+    });
+
+    return NextResponse.json({ conversations: result });
   } catch (error) {
     console.error('GET /api/messages error:', error);
-    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }
 
+// POST /api/messages — send a message to another user
+// Accepts both recipientId and recipientUserId for backward compatibility.
 export async function POST(req: NextRequest) {
   try {
     const auth = await getAuth(req);
@@ -77,63 +88,140 @@ export async function POST(req: NextRequest) {
     const { userId, role } = auth;
 
     const body = await req.json();
-    const { conversationId, recipientUserId, content } = body;
-    if (!content || !content.trim()) return NextResponse.json({ error: 'Message content is required' }, { status: 400 });
+    const { recipientId, recipientUserId, content, conversationId } = body;
 
-    let convId = conversationId;
-    if (!convId) {
-      if (!recipientUserId) return NextResponse.json({ error: 'recipientUserId required' }, { status: 400 });
-      const [u1, u2] = normalizePair(userId, recipientUserId);
-      const existing = await db.conversation.findUnique({ where: { user1Id_user2Id: { user1Id: u1, user2Id: u2 } } });
-      if (existing) { convId = existing.id; }
-      else {
-        const conv = await db.conversation.create({ data: { user1Id: u1, user2Id: u2 } });
-        convId = conv.id;
+    // If conversationId is provided, send to existing conversation
+    if (conversationId && content) {
+      const conv = await db.conversation.findUnique({ where: { id: conversationId } });
+      if (!conv) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+      if (conv.user1Id !== userId && conv.user2Id !== userId) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
+
+      const message = await db.message.create({
+        data: { conversationId, senderId: userId, senderRole: role, content, isRead: false },
+      });
+
+      const isSenderUser1 = conv.user1Id === userId;
+      await db.conversation.update({
+        where: { id: conversationId },
+        data: {
+          lastMessage: content,
+          lastMessageAt: new Date(),
+          unreadUser1: isSenderUser1 ? conv.unreadUser1 : conv.unreadUser1 + 1,
+          unreadUser2: isSenderUser1 ? conv.unreadUser2 + 1 : conv.unreadUser2,
+        },
+      });
+
+      const recipientIdForNotif = conv.user1Id === userId ? conv.user2Id : conv.user1Id;
+      try {
+        const senderUser = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
+        await createNotification({
+          userId: recipientIdForNotif,
+          title: 'New Message',
+          message: userId + '|You have a new message from ' + (senderUser?.name || 'someone'),
+          type: 'message',
+          pushBody: 'You have a new message from ' + (senderUser?.name || 'someone'),
+        });
+      } catch (e) { console.error('[messages POST] notification failed:', e); }
+
+      return NextResponse.json({
+        message: {
+          id: message.id, conversationId: message.conversationId,
+          senderId: message.senderId, senderRole: message.senderRole,
+          content: message.content, createdAt: message.createdAt.toISOString(),
+        },
+        conversationId,
+      }, { status: 201 });
+    }
+
+    // New conversation — recipientId or recipientUserId
+    const recipient = recipientId || recipientUserId;
+    if (!recipient || !content) {
+      return NextResponse.json({ error: 'recipientId and content are required' }, { status: 400 });
+    }
+
+    const [user1Id, user2Id] = normalizePair(userId, recipient);
+
+    let conversation = await db.conversation.findUnique({
+      where: { user1Id_user2Id: { user1Id, user2Id } },
+    });
+
+    if (!conversation) {
+      conversation = await db.conversation.create({ data: { user1Id, user2Id } });
     }
 
     const message = await db.message.create({
-      data: { conversationId: convId, senderId: userId, senderRole: role, content: content.trim() },
+      data: { conversationId: conversation.id, senderId: userId, senderRole: role, content, isRead: false },
     });
 
+    const isSenderUser1 = conversation.user1Id === userId;
     await db.conversation.update({
-      where: { id: convId },
-      data: { lastMessage: content.trim(), lastMessageAt: new Date() },
+      where: { id: conversation.id },
+      data: {
+        lastMessage: content,
+        lastMessageAt: new Date(),
+        unreadUser1: isSenderUser1 ? conversation.unreadUser1 : conversation.unreadUser1 + 1,
+        unreadUser2: isSenderUser1 ? conversation.unreadUser2 + 1 : conversation.unreadUser2,
+      },
     });
 
-    // Notify recipient (in-app + push)
     try {
-      const conv = await db.conversation.findUnique({ where: { id: convId } });
-      if (conv) {
-        const recipientId = userId === conv.user1Id ? conv.user2Id : conv.user1Id;
-        // Increment unread count for recipient
-        const field = conv.user1Id === recipientId ? 'unreadUser1' : 'unreadUser2';
-        await db.conversation.update({
-          where: { id: convId },
-          data: { [field]: { increment: 1 } },
-        });
+      const senderUser2 = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
+      await createNotification({
+        userId: recipient,
+        title: 'New Message',
+        message: userId + '|You have a new message from ' + (senderUser2?.name || 'someone'),
+        type: 'message',
+        pushBody: 'You have a new message from ' + (senderUser2?.name || 'someone'),
+      });
+    } catch (e) { console.error('[messages POST] notification failed:', e); }
 
-        const sender = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
-        const senderName = sender?.name || 'Someone';
-        const preview = content.trim().substring(0, 100) + (content.trim().length > 100 ? '...' : '');
-
-        await createNotification({
-          userId: recipientId,
-          title: 'New Message from ' + senderName,
-          message: preview,
-          type: 'message',
-          pushBody: senderName + ': ' + preview,
-          pushUrl: 'https://167.86.124.101:4001/#messages',
-        });
-      }
-    } catch (notifErr) {
-      console.error('[messages POST] notification failed:', notifErr);
-    }
-
-    return NextResponse.json({ message: { ...message, createdAt: message.createdAt.toISOString() }, conversationId: convId }, { status: 201 });
+    return NextResponse.json({
+      message: {
+        id: message.id, conversationId: message.conversationId,
+        senderId: message.senderId, senderRole: message.senderRole,
+        content: message.content, createdAt: message.createdAt.toISOString(),
+      },
+      conversationId: conversation.id,
+    }, { status: 201 });
   } catch (error) {
     console.error('POST /api/messages error:', error);
-    return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }
 
+// PATCH /api/messages — mark a conversation as read
+export async function PATCH(req: NextRequest) {
+  try {
+    const auth = await getAuth(req);
+    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const { userId } = auth;
+
+    const body = await req.json();
+    const { conversationId } = body;
+    if (!conversationId) return NextResponse.json({ error: 'conversationId required' }, { status: 400 });
+
+    const conv = await db.conversation.findUnique({ where: { id: conversationId } });
+    if (!conv) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (conv.user1Id !== userId && conv.user2Id !== userId) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    if (conv.user1Id === userId) {
+      await db.conversation.update({ where: { id: conversationId }, data: { unreadUser1: 0 } });
+    } else {
+      await db.conversation.update({ where: { id: conversationId }, data: { unreadUser2: 0 } });
+    }
+
+    await db.message.updateMany({
+      where: { conversationId, senderId: { not: userId }, isRead: false },
+      data: { isRead: true },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('PATCH /api/messages error:', error);
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
+  }
+}

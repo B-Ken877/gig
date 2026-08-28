@@ -1,20 +1,19 @@
-// Types aligned with Prisma schema for Gig Solutions
+// Types aligned with the new Gig Solutions philosophy (video assessments).
 
 export type PageType =
-  | 'home' | 'services' | 'for-clients' | 'careers' | 'about' | 'contact'
-  | 'login' | 'register' | 'register-agent' | 'register-client'
+  | 'home' | 'services' | 'careers' | 'about' | 'contact' | 'academy'
+  | 'login' | 'register-agent' | 'reset-password'
   | 'agent-dashboard' | 'agent-profile' | 'agent-documents' | 'agent-availability' | 'agent-applications'
-  | 'client-dashboard' | 'client-agents' | 'client-needs' | 'client-jobs' | 'client-applications' | 'client-profile'
-  | 'admin-dashboard' | 'admin-users' | 'admin-job-posts'
-  | 'payment-taker-dashboard'
-  | 'messages'
-  | 'pending-payment';
+  | 'agent-verify-id'
+  | 'agent-my-work'
+  | 'admin-dashboard' | 'admin-users' | 'admin-job-posts' | 'admin-providers'
+  | 'admin-placements' | 'admin-salary-dates' | 'admin-verifications' | 'admin-interviews' | 'admin-password-resets'
+  | 'messages' | 'support' | 'tickets' | 'pending-payment';
 
-export type UserRole = 'visitor' | 'agent' | 'client' | 'payment_taker' | 'admin';
+export type UserRole = 'visitor' | 'agent' | 'admin';
 
 export type AgentStatus = 'Available' | 'Inactive';
 export type AccountStatus = 'active' | 'pending_approval' | 'rejected' | 'suspended';
-export type PaymentRequestStatus = 'pending' | 'approved' | 'rejected';
 
 export interface User {
   id: string; email: string; name: string; role: UserRole;
@@ -36,33 +35,80 @@ export interface Agent {
   availabilitySlots?: AvailabilitySlot[];
 }
 
-export interface Client {
-  id: string; userId: string; companyName: string;
-  industry?: string; contactPerson?: string; phone?: string;
-  billingAddress?: string; billingEmail?: string; taxId?: string;
-  companyLink?: string;
+export interface Provider {
+  id: string; name: string; phone?: string; email?: string; notes?: string;
   createdAt: string; updatedAt: string;
-  user?: User;
+  _count?: { jobPosts: number };
 }
 
 export interface JobPost {
-  id: string; clientId: string; companyName: string;
-  companyLink?: string; jobTitle: string; description: string;
-  isActive: boolean; createdAt: string; updatedAt: string;
+  id: string;
+  jobTitle: string;
+  description: string;
+  skills: string[];
+  requirements: string[];
+  hourlyRate: number;
+  payFrequency: string;
+  category?: string;
+  shift?: string;
+  location?: string;
+  providerId?: string;
+  commission: number;
+  assessmentQuestions: string[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { applications: number; placements: number };
 }
 
-export interface CallCenterNeed {
-  id: string; clientId: string; title: string;
-  description: string; requirements: string[];
-  isActive: boolean; createdAt: string; updatedAt: string;
+export interface VideoResponse {
+  id: string;
+  applicationId: string;
+  questionIndex: number;
+  questionText: string;
+  videoUrl: string;
+  durationSeconds?: number;
+  createdAt: string;
 }
 
-export interface PaymentRequest {
-  id: string; userId: string; role: string;
-  feeType: string; amount: number; currency: string;
-  status: PaymentRequestStatus; handledBy?: string;
-  createdAt: string; updatedAt: string;
-  user?: User; handledByUser?: User;
+export interface JobApplication {
+  id: string;
+  agentId: string;
+  jobPostId: string;
+  status: 'applied' | 'hired' | 'rejected';
+  coverMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+  jobPost?: JobPost;
+  agent?: Agent;
+  videoResponses?: VideoResponse[];
+  videoCount?: number;
+}
+
+export interface Placement {
+  id: string;
+  agentId: string;
+  jobPostId: string;
+  position: string;
+  startDate?: string;
+  endDate?: string;
+  salary?: number;
+  nextSalaryDate?: string;
+  status: 'active' | 'completed' | 'terminated';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  jobPost?: JobPost;
+  agent?: Agent;
+}
+
+export interface SalaryDate {
+  id: string;
+  payDate: string;
+  frequency: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Document {
@@ -80,7 +126,7 @@ export interface Notification {
 }
 
 export interface InternalNote {
-  id: string; agentId?: string; clientId?: string;
+  id: string; agentId?: string;
   authorId: string; type: string;
   content: string; createdAt: string; updatedAt: string;
 }
@@ -103,9 +149,4 @@ export interface AvailabilitySlot {
 export interface ToastMessage {
   id: string; title?: string; description?: string;
   variant?: 'default' | 'destructive' | 'success';
-}
-
-export interface DashboardStat {
-  label: string; value: string | number; change?: string;
-  icon?: string; trend?: 'up' | 'down' | 'neutral';
 }

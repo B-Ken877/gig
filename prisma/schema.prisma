@@ -12,7 +12,7 @@ model User {
   email         String   @unique
   password      String
   name          String
-  role          String   @default("visitor")
+  role          String   @default("agent")
   phone         String?
   avatar        String?
   isActive      Boolean  @default(true)
@@ -21,15 +21,14 @@ model User {
   updatedAt     DateTime @updatedAt
 
   agent   Agent?
-  client  Client?
   conversationsAsUser1 Conversation[] @relation("ConvUser1")
   conversationsAsUser2 Conversation[] @relation("ConvUser2")
   auditLogs   AuditLog[]
   notifications Notification[]
-  paymentRequestsHandled PaymentRequest[] @relation("PaymentTaker")
-  paymentRequests PaymentRequest[]
   pushSubscription  PushSubscription?
-
+  supportTickets   SupportTicket[]
+  passwordResetRequests PasswordResetRequest[]
+  passwordResetTokens  PasswordResetToken[]
   @@index([role])
   @@index([email])
 }
@@ -56,6 +55,18 @@ model Agent {
   preferredShift  String?
   salaryExpectation Float?
   niu             String?
+  // ─── Identity Verification ────────────────────────────────────────────
+  // Status: 'unverified' | 'pending' | 'verified' | 'rejected'
+  // type:   'id_card' | 'drivers_license'
+  idVerificationStatus String  @default("unverified")
+  idVerificationType   String?
+  idFrontPhotoUrl      String?
+  idBackPhotoUrl       String?
+  idSelfiePhotoUrl     String?
+  idVerificationSubmittedAt DateTime?
+  idVerificationReviewedAt  DateTime?
+  idVerificationReviewedBy  String?
+  idVerificationNotes       String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -63,82 +74,159 @@ model Agent {
   documents       Document[]
   availabilitySlots AvailabilitySlot[]
   notes           InternalNote[]
+  placements      Placement[]
+  jobApplications JobApplication[]
+  videoResponses  VideoResponse[]
 
   @@index([status])
   @@index([country])
 }
 
-model Client {
+model Provider {
   id              String   @id @default(cuid())
-  userId          String   @unique
-  companyName     String
-  industry        String?
-  contactPerson   String?
+  name            String
   phone           String?
-  billingAddress  String?
-  billingEmail    String?
-  taxId           String?
-  companyLink     String?
+  email           String?
+  notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   jobPosts        JobPost[]
-  callCenterNeeds CallCenterNeed[]
-  notes           InternalNote[]
-
-  @@index([industry])
+  @@index([name])
 }
 
 model JobPost {
   id              String   @id @default(cuid())
-  clientId        String?
-  companyName     String
-  companyLink     String?
   jobTitle        String
   description     String
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  client          Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@index([isActive])
-}
-
-model CallCenterNeed {
-  id              String   @id @default(cuid())
-  clientId        String
-  title           String
-  description     String
+  skills          String   @default("[]")
   requirements    String   @default("[]")
+  hourlyRate      Float    @default(0)
+  payFrequency    String   @default("bi-weekly")
+  category        String?
+  shift           String?
+  location        String?  @default("Remote")
+  providerId      String?
+  commission      Float    @default(0)
+  assessmentQuestions String @default("[]")
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  provider        Provider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  applications    JobApplication[]
+  placements      Placement[]
+  salaryDates     SalaryDate[]
 
-  @@index([clientId])
   @@index([isActive])
+  @@index([providerId])
+  @@index([category])
 }
 
-model PaymentRequest {
+model JobApplication {
   id              String   @id @default(cuid())
-  userId          String
-  role            String
-  feeType         String
-  amount          Float
-  currency        String   @default("HTG")
-  status          String   @default("pending")
-  handledBy       String?
+  agentId         String
+  jobPostId       String
+  // Status flow: applied → interview_scheduled → (hired | rejected)
+  //              applied → (hired | rejected)  ← admin can still short-circuit
+  status          String   @default("applied")
+  coverMessage    String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  handledByUser   User?    @relation("PaymentTaker", fields: [handledBy], references: [id])
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  jobPost         JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  videoResponses  VideoResponse[]
+  interviews      Interview[]
 
+  @@unique([agentId, jobPostId])
+  @@index([agentId])
+  @@index([jobPostId])
   @@index([status])
-  @@index([userId])
+}
+
+// INTERVIEW — created by admin when they want to schedule a call with an
+// applicant after reviewing their video assessment. One application can have
+// multiple interviews (e.g., rescheduled), but only one "scheduled" at a time.
+model Interview {
+  id              String   @id @default(cuid())
+  applicationId   String
+  agentId         String
+  jobPostId       String
+  adminId         String
+  scheduledAt     DateTime
+  timezone        String?
+  location        String?
+  notes           String?
+  status          String   @default("scheduled")  // 'scheduled' | 'completed' | 'cancelled'
+  conversationId  String?  // the message thread where the agent was notified
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  application     JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([agentId])
+  @@index([jobPostId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+model VideoResponse {
+  id              String   @id @default(cuid())
+  applicationId   String
+  agentId         String
+  jobPostId       String
+  questionIndex   Int
+  questionText    String
+  videoUrl        String
+  durationSeconds Float?
+  createdAt       DateTime @default(now())
+
+  application     JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([agentId])
+  @@index([jobPostId])
+}
+
+model Placement {
+  id              String   @id @default(cuid())
+  agentId         String
+  jobPostId       String
+  position        String
+  startDate       DateTime?
+  endDate         DateTime?
+  salary          Float?
+  nextSalaryDate  DateTime?
+  status          String   @default("active")
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  jobPost         JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([jobPostId])
+  @@index([status])
+}
+
+// SALARY DATE — per-job. Each salary date belongs to a specific job post.
+// Agents only see salary dates for jobs they have active placements on.
+model SalaryDate {
+  id              String   @id @default(cuid())
+  jobPostId       String
+  payDate         DateTime
+  frequency       String   @default("bi-weekly")
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  jobPost         JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+
+  @@index([jobPostId])
+  @@index([payDate])
 }
 
 model Document {
@@ -153,9 +241,7 @@ model Document {
   downloadCount   Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
   @@index([agentId])
   @@index([type])
 }
@@ -170,9 +256,7 @@ model Notification {
   isRead          Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId])
   @@index([isRead])
 }
@@ -180,15 +264,12 @@ model Notification {
 model InternalNote {
   id              String   @id @default(cuid())
   agentId         String?
-  clientId        String?
   authorId        String
   type            String
   content         String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   agent           Agent?   @relation(fields: [agentId], references: [id])
-  client          Client?  @relation(fields: [clientId], references: [id])
 }
 
 model AuditLog {
@@ -201,9 +282,50 @@ model AuditLog {
   ipAddress       String?
   createdAt       DateTime @default(now())
   user            User?    @relation(fields: [userId], references: [id])
-
   @@index([userId])
   @@index([action])
+}
+
+// PASSWORD RESET REQUEST — created when an agent clicks "Forgot password?"
+// on the login page and submits their email. This is a QUEUE for the admin to
+// review. The admin then generates a PasswordResetToken (with a separate row)
+// and manually emails the link to the agent.
+model PasswordResetRequest {
+  id              String   @id @default(cuid())
+  email           String   // the email the agent typed (preserved verbatim)
+  userId          String?  // resolved user id if an account exists (null otherwise)
+  status          String   @default("pending")  // 'pending' | 'link_generated' | 'dismissed'
+  resolvedBy      String?  // admin user id who handled it
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tokens          PasswordResetToken[]  // back-relation: tokens generated for this request
+
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// PASSWORD RESET TOKEN — created by an admin for a specific user. The token
+// itself is sent to the agent via a URL; only its SHA-256 hash is stored here.
+// Single-use, expires in 1 hour, bound to the user.
+model PasswordResetToken {
+  id              String   @id @default(cuid())
+  userId          String   // the user this token is for (binds it to the account)
+  tokenHash       String   @unique  // SHA-256 hash of the raw token — never store the raw token
+  expiresAt       DateTime  // 1 hour from creation
+  usedAt          DateTime?  // null until the agent successfully resets
+  usedFromIp      String?
+  requestId       String?  // optional link to the PasswordResetRequest that triggered it
+  createdBy       String   // admin user id who generated the link (audit trail)
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request         PasswordResetRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
 }
 
 model AvailabilitySlot {
@@ -215,7 +337,6 @@ model AvailabilitySlot {
   isAvailable     Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
 }
 
@@ -229,11 +350,9 @@ model Conversation {
   unreadUser2     Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   user1           User     @relation("ConvUser1", fields: [user1Id], references: [id], onDelete: Cascade)
   user2           User     @relation("ConvUser2", fields: [user2Id], references: [id], onDelete: Cascade)
   messages        Message[]
-
   @@unique([user1Id, user2Id])
 }
 
@@ -244,11 +363,13 @@ model Message {
   senderRole      String?
   content         String
   isRead          Boolean  @default(false)
+  // WhatsApp-style edit/delete support
+  editedAt        DateTime?  // set when sender edits the message content
+  deletedAt       DateTime?  // set when sender deletes the message for everyone
+  deletedBy       String?    // userId who deleted it (audit)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
   @@index([conversationId])
   @@index([senderId])
   @@index([isRead])
@@ -260,8 +381,34 @@ model PushSubscription {
   endpoint  String
   keys      String
   createdAt DateTime @default(now())
-
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId])
+}
+
+model SupportTicket {
+  id              String   @id @default(cuid())
+  userId          String
+  subject         String
+  description     String
+  status          String   @default("open")
+  assignedTo      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages        TicketMessage[]
+  @@index([userId])
+  @@index([status])
+  @@index([assignedTo])
+}
+
+model TicketMessage {
+  id              String   @id @default(cuid())
+  ticketId        String
+  senderId        String
+  senderRole      String
+  content         String
+  createdAt       DateTime @default(now())
+  ticket          SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  @@index([ticketId])
+  @@index([createdAt])
 }

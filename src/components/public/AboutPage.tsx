@@ -104,7 +104,7 @@ export default function AboutPage() {
             Join the Gig Solutions Community
           </h2>
           <p className="mt-4 text-lg text-white/60">
-            Whether you are an agent or a call center, there is a place for you here.
+            Join our community of remote agents and start your next career today.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Button size="lg" className="bg-[#16A34A] text-white hover:bg-[#16A34A]/90"

@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
-  PageType, User, Agent, Client, JobPost, CallCenterNeed,
-  PaymentRequest, Notification, AuditLog, ToastMessage, UserRole,
+  PageType, User, Agent, JobPost, JobApplication, Placement,
+  Notification, AuditLog, ToastMessage, UserRole, Provider, SalaryDate,
 } from '@/lib/types';
 
 export function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -17,25 +17,36 @@ export function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise
 }
 
 const PUBLIC_PAGES: ReadonlySet<PageType> = new Set<PageType>([
-  'home', 'services', 'for-clients', 'careers', 'about', 'contact',
-  'login', 'register-agent', 'register-client', 'pending-payment',
+  'home', 'services', 'careers', 'about', 'contact', 'academy',
+  'login', 'register-agent', 'pending-payment', 'reset-password',
 ]);
 
 const VALID_PAGES: ReadonlySet<PageType> = new Set<PageType>([
-  'home','services','for-clients','careers','about','contact',
-  'login','register-agent','register-client','pending-payment',
-  'agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications',
-  'client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile',
-  'admin-dashboard','admin-users','admin-job-posts',
-  'payment-taker-dashboard','messages',
+  'home', 'services', 'careers', 'about', 'contact', 'academy',
+  'login', 'register-agent', 'pending-payment', 'reset-password',
+  'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability', 'agent-applications', 'agent-my-work', 'agent-verify-id',
+  'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
+  'admin-placements', 'admin-salary-dates', 'admin-verifications', 'admin-interviews', 'admin-password-resets',
+  'messages', 'support', 'tickets',
 ]);
 
-// FEATURE: Role-based page access control
+function effectiveRole(role: string | undefined): UserRole {
+  if (!role) return 'visitor';
+  if (role === 'payment_taker' || role === 'client') return 'admin';
+  return role as UserRole;
+}
+
 const ROLE_PAGE_MAP: Partial<Record<UserRole, ReadonlySet<PageType>>> = {
-  agent: new Set(['agent-dashboard','agent-profile','agent-documents','agent-availability','agent-applications','messages','pending-payment']),
-  client: new Set(['client-dashboard','client-agents','client-needs','client-jobs','client-applications','client-profile','messages','pending-payment']),
-  admin: new Set(['admin-dashboard','admin-users','admin-job-posts','messages']),
-  payment_taker: new Set(['payment-taker-dashboard','messages']),
+  agent: new Set([
+    'agent-dashboard', 'agent-profile', 'agent-documents', 'agent-availability',
+    'agent-applications', 'agent-my-work', 'agent-verify-id', 'academy', 'messages', 'support',
+    'pending-payment',
+  ]),
+  admin: new Set([
+    'admin-dashboard', 'admin-users', 'admin-job-posts', 'admin-providers',
+    'admin-placements', 'admin-salary-dates', 'admin-verifications', 'admin-interviews', 'admin-password-resets',
+    'academy', 'messages', 'tickets', 'support',
+  ]),
 };
 
 interface AuthSlice {
@@ -47,14 +58,13 @@ interface AuthSlice {
     name: string; email: string; password: string;
     role: UserRole; phone?: string;
     agentProfile?: Record<string, unknown>;
-    clientProfile?: Record<string, unknown>;
   }) => Promise<{ message?: string; requiresApproval?: boolean; userId?: string }>;
   logout: () => void;
+  updateCurrentUser: (patch: Partial<User>) => void;
 }
 
 const createAuthSlice = (
   set: (fn: (state: AppStore) => Partial<AppStore>) => void,
-  get: () => AppStore,
 ): AuthSlice => ({
   currentUser: null, isAuthenticated: false, isLoading: false,
   login: async (email: string, password: string) => {
@@ -77,17 +87,23 @@ const createAuthSlice = (
     } catch (error) { set(() => ({ isLoading: false })); throw error; }
   },
   logout: () => { set(() => ({ currentUser: null, isAuthenticated: false, currentPage: 'home' as PageType, previousPages: [] })); },
+  updateCurrentUser: (patch) => {
+    set((state) => ({ currentUser: state.currentUser ? { ...state.currentUser, ...patch } : null }));
+  },
 });
 
 interface NavSlice {
   currentPage: PageType;
   previousPages: PageType[];
   pendingChatUserId: string | null;
+  pendingChatConversationId: string | null;
+  pendingJobId: string | null;
   navigateTo: (page: PageType) => void;
   goBack: () => void;
   isPublicPage: () => boolean;
   isRoleAllowed: (page: PageType) => boolean;
   syncFromHash: () => void;
+  setPendingJobId: (jobId: string | null) => void;
 }
 
 const createNavSlice = (
@@ -97,17 +113,17 @@ const createNavSlice = (
   currentPage: 'home',
   previousPages: [],
   pendingChatUserId: null,
+  pendingChatConversationId: null,
+  pendingJobId: null,
   navigateTo: (page: PageType) => {
     const { currentPage } = get();
     if (page === currentPage) return;
-    // BUG FIX: Limit history depth to prevent memory growth
     set(() => ({ previousPages: [...get().previousPages.slice(-20), currentPage], currentPage: page }));
     if (typeof window !== 'undefined') {
       window.history.pushState({ page }, '', '#' + page);
       window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
     }
   },
-  // BUG FIX: goBack now properly pops from previousPages
   goBack: () => {
     const { previousPages } = get();
     if (previousPages.length === 0) return;
@@ -122,18 +138,26 @@ const createNavSlice = (
   isRoleAllowed: (page: PageType) => {
     const role = get().currentUser?.role;
     if (!role) return false;
-    const allowed = ROLE_PAGE_MAP[role];
+    const effRole = effectiveRole(role);
+    const allowed = ROLE_PAGE_MAP[effRole];
     if (!allowed) return false;
     return allowed.has(page);
   },
-  // FEATURE: Hash-based routing on page load
   syncFromHash: () => {
     if (typeof window === 'undefined') return;
     const hash = window.location.hash.replace('#', '');
-    if (hash && VALID_PAGES.has(hash as PageType)) {
-      set(() => ({ currentPage: hash as PageType }));
+    if (hash.startsWith('careers')) {
+      set(() => ({ currentPage: 'careers' as PageType }));
+      return;
+    }
+    // Reset-password URLs carry a query string: reset-password?token=...
+    // Strip the query part so the page name matches a valid PageType.
+    const pageName = hash.split('?')[0];
+    if (hash && VALID_PAGES.has(pageName as PageType)) {
+      set(() => ({ currentPage: pageName as PageType }));
     }
   },
+  setPendingJobId: (jobId) => { set(() => ({ pendingJobId: jobId })); },
 });
 
 interface UISlice {
@@ -165,12 +189,17 @@ const createUISlice = (
   removeToast: (id: string) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 });
 
-type DataCacheKey = 'agents' | 'clients' | 'jobPosts' | 'callCenterNeeds' | 'paymentRequests' | 'notifications' | 'auditLogs';
+type DataCacheKey = 'agents' | 'jobPosts' | 'jobApplications' | 'placements' | 'providers' | 'salaryDates' | 'notifications' | 'auditLogs';
 
 interface DataSlice {
-  agents: Agent[] | null; clients: Client[] | null; jobPosts: JobPost[] | null;
-  callCenterNeeds: CallCenterNeed[] | null; paymentRequests: PaymentRequest[] | null;
-  notifications: Notification[] | null; auditLogs: AuditLog[] | null;
+  agents: Agent[] | null;
+  jobPosts: JobPost[] | null;
+  jobApplications: JobApplication[] | null;
+  placements: Placement[] | null;
+  providers: Provider[] | null;
+  salaryDates: SalaryDate[] | null;
+  notifications: Notification[] | null;
+  auditLogs: AuditLog[] | null;
   setData: (key: DataCacheKey, data: unknown) => void;
   getData: (key: DataCacheKey) => unknown;
 }
@@ -178,8 +207,8 @@ interface DataSlice {
 const createDataSlice = (
   set: (fn: (state: AppStore) => Partial<AppStore>) => void,
 ): DataSlice => ({
-  agents: null, clients: null, jobPosts: null, callCenterNeeds: null,
-  paymentRequests: null, notifications: null, auditLogs: null,
+  agents: null, jobPosts: null, jobApplications: null, placements: null,
+  providers: null, salaryDates: null, notifications: null, auditLogs: null,
   setData: (key, data) => set(() => ({ [key]: data })),
   getData: (key) => { const store = useAppStore.getState(); return (store as Record<string, unknown>)[key] ?? null; },
 });
@@ -189,7 +218,7 @@ export type AppStore = AuthSlice & NavSlice & UISlice & DataSlice;
 export const useAppStore = create<AppStore>()(
   persist(
     (...args) => ({
-      ...createAuthSlice(args[0], args[1]),
+      ...createAuthSlice(args[0]),
       ...createNavSlice(args[0], args[1]),
       ...createUISlice(args[0], args[1]),
       ...createDataSlice(args[0]),
@@ -201,6 +230,9 @@ export const useAppStore = create<AppStore>()(
         isAuthenticated: state.isAuthenticated,
         currentPage: state.currentPage,
         previousPages: state.previousPages,
+        pendingJobId: state.pendingJobId,
+        pendingChatUserId: state.pendingChatUserId,
+        pendingChatConversationId: state.pendingChatConversationId,
       }),
     }
   )
