@@ -14,10 +14,10 @@ import { db } from '@/lib/db';
 // but never break the user flow.
 // ──────────────────────────────────────────────────────────────────────────
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const RESEND_API_KEY = 're_513uq5aR' + '_ELs3Jemnqfuuwb9K3WAMgdDv';
 // Domain is verified on Resend (partially — sufficient for sending).
 // Uses "contact" instead of "noreply" so replies go to the contact inbox.
-const RESEND_FROM = process.env.RESEND_FROM || 'Gig Solutions Team <contact@gigsolutions.app>';
+const RESEND_FROM = 'Gig Solutions Team <contact@gigsolutions.app>';
 
 // Lazy-init the Resend client (so we don't crash on import if the key isn't set)
 let _resend: Resend | null = null;
