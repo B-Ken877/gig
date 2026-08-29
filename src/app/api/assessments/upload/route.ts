@@ -10,7 +10,7 @@ import { getAuth } from '@/lib/auth-middleware';
 // Uses STREAMING to write the file to disk — avoids loading the entire
 // video (could be 20-50MB) into memory, which was causing the Node.js
 // process to hang / OOM.
-const VIDEO_DIR = 'process.cwd() + '/uploads'/videos';
+const VIDEO_DIR = '/tmp/uploads/videos';
 const MAX_FILE_BYTES = 100 * 1024 * 1024; // 100 MB
 
 function getExtension(mimeType: string): string {

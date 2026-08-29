@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-const VIDEO_DIR = 'process.cwd() + '/uploads'/videos';
+const VIDEO_DIR = '/tmp/uploads/videos';
 
 // GET /api/uploads/videos/[filename] — serve a recorded video file.
 export async function GET(

@@ -17,7 +17,7 @@ import { getAuth } from '@/lib/auth-middleware';
 //   - back: File (image)
 //   - selfie: File (image)
 //   - type: 'id_card' | 'drivers_license'
-const ID_PHOTO_DIR = 'process.cwd() + '/uploads'/id-photos';
+const ID_PHOTO_DIR = '/tmp/uploads/id-photos';
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB per photo
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-const ID_PHOTO_DIR = 'process.cwd() + '/uploads'/id-photos';
+const ID_PHOTO_DIR = '/tmp/uploads/id-photos';
 
 // GET /api/uploads/id-photos/[filename] — serve an ID verification photo.
 // Only authenticated users (admin or the photo owner) should access these.

@@ -7,7 +7,7 @@ import path from 'path';
 
 // Persistent storage directory for uploaded avatars.
 // Located OUTSIDE the build pipeline so files survive rebuilds/redeploys.
-const AVATAR_DIR = 'process.cwd() + '/uploads'/avatars';
+const AVATAR_DIR = '/tmp/uploads/avatars';
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_FILE_BYTES = 8 * 1024 * 1024; // 8 MB input limit (before resize)

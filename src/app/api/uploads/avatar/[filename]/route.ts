@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-const AVATAR_DIR = 'process.cwd() + '/uploads'/avatars';
+const AVATAR_DIR = '/tmp/uploads/avatars';
 
 export async function GET(
   _req: NextRequest,
