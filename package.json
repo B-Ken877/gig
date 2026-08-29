@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "DATABASE_URL=${DATABASE_URL:-postgresql://placeholder:placeholder@placeholder:5432/placeholder} npx prisma generate && next build",
+    "build": "echo 'DATABASE_URL=\"postgresql://placeholder:placeholder@placeholder:5432/placeholder\"' > .env && npx prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
     "db:push": "prisma db push",
